@@ -248,7 +248,7 @@ def fallback_08():
 
 
 def fallback_11():
-    """Plugins always present — remove IsPdfViewerAvailable guard."""
+    """Plugins always present — replace IsPdfViewerAvailable() with true."""
     f = "third_party/blink/renderer/modules/plugins/dom_plugin_array.cc"
     with open(f) as fh:
         content = fh.read()
@@ -258,46 +258,15 @@ def fallback_11():
     if "IsPdfViewerAvailable()" not in content:
         return False
 
-    # Line-by-line: remove IsPdfViewerAvailable guard, keep inner code de-indented
-    lines = content.split("\n")
-    result = []
-    in_if_block = False
-    brace_depth = 0
-    found = False
-    for line in lines:
-        if "IsPdfViewerAvailable()" in line and not found:
-            result.append(
-                "  // Stealth: always report PDF plugins (headless may lack plugin service)"
-            )
-            found = True
-            in_if_block = True
-            brace_depth = 1  # the { at end of the if line
-            continue
-        if in_if_block:
-            brace_depth += line.count("{") - line.count("}")
-            if brace_depth <= 0:
-                # Closing } of the if block — skip it
-                in_if_block = False
-                continue
-            # Skip comment-only lines inside the if
-            if line.strip().startswith("//"):
-                continue
-            # De-indent by 2 spaces (removing one level of nesting)
-            if line.startswith("      "):
-                result.append(line[2:])
-            elif line.startswith("    "):
-                result.append(line[2:])
-            else:
-                result.append(line)
-            continue
-        result.append(line)
-
-    if not found:
-        print(f"    DEBUG: IsPdfViewerAvailable() not found")
-        return False
+    # Simple replacement: make the check always true instead of
+    # trying to restructure the code block
+    content = content.replace(
+        "IsPdfViewerAvailable()",
+        "true /* Stealth: always report PDF plugins */",
+    )
 
     with open(f, "w") as fh:
-        fh.write("\n".join(result))
+        fh.write(content)
     return True
 
 

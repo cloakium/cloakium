@@ -11,9 +11,6 @@ on:
 permissions:
   contents: write
 
-concurrency:
-  group: release-${{ inputs.upstream_version }}
-  cancel-in-progress: false
 
 jobs:
   ensure-release:

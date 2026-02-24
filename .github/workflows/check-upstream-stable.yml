@@ -25,18 +25,23 @@ jobs:
           echo "version=$v" >> "$GITHUB_OUTPUT"
           echo "Upstream Stable: $v"
 
-      - name: Read latest GitHub Release tag
+      - name: Check if release already exists for this version
         id: last
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName 2>/dev/null || true)"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "Last release tag: ${tag:-<none>}"
+          v="${{ steps.upstream.outputs.version }}"
+          if gh release view "$v" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Release $v already exists"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "No release for $v"
+          fi
 
-      - name: Dispatch build if upstream changed
-        if: steps.upstream.outputs.version != steps.last.outputs.tag
+      - name: Dispatch build if no release exists
+        if: steps.last.outputs.exists == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

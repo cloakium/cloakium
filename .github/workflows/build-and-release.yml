@@ -108,6 +108,18 @@ jobs:
           echo "CHROMIUM_SRC=$WORK_ROOT/chromium/src" >> "$GITHUB_ENV"
           mkdir -p "$CACHE_ROOT" "$WORK_ROOT"
 
+      - name: Ensure Metal toolchain (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          # ANGLE Metal shaders require the Metal toolchain
+          if ! xcrun -f metal &>/dev/null; then
+            echo "Installing Metal toolchain..."
+            xcodebuild -downloadComponent MetalToolchain
+          else
+            echo "Metal toolchain already available"
+          fi
+
       - name: Set up depot_tools
         shell: bash
         run: |

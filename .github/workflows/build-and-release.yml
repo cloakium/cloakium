@@ -277,6 +277,11 @@ jobs:
           target_cpu = "$TARGET_CPU"
           GNEOF
 
+          # macOS: disable Metal backend (requires separate toolchain download)
+          if [ "$TARGET_OS" = "mac" ]; then
+            echo 'angle_enable_metal = false' >> "$BUILD_DIR/args.gn"
+          fi
+
           # Cross-compilation args
           if [ "$TARGET_OS" = "win" ]; then
             echo 'target_os = "win"' >> "$BUILD_DIR/args.gn"

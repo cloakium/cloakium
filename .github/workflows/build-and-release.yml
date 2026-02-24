@@ -15,11 +15,6 @@ concurrency:
   group: release-${{ inputs.upstream_version }}
   cancel-in-progress: false
 
-env:
-  # Persistent cache root on self-hosted runners (Docker volume mount)
-  CACHE_ROOT: /cache
-  CHROMIUM_SRC: /work/chromium/src
-
 jobs:
   ensure-release:
     runs-on: ubuntu-latest
@@ -53,6 +48,8 @@ jobs:
             target_os: linux
             target_cpu: x64
             cross: false
+            cache_root: /cache
+            work_root: /work
 
           - target: linux-arm64
             runner: [self-hosted, linux, x64]
@@ -60,6 +57,8 @@ jobs:
             target_os: linux
             target_cpu: arm64
             cross: true
+            cache_root: /cache
+            work_root: /work
 
           - target: win64
             runner: [self-hosted, linux, x64]
@@ -67,6 +66,8 @@ jobs:
             target_os: win
             target_cpu: x64
             cross: true
+            cache_root: /cache
+            work_root: /work
 
           - target: darwin-arm64
             runner: [self-hosted, macOS, ARM64]
@@ -74,6 +75,8 @@ jobs:
             target_os: mac
             target_cpu: arm64
             cross: false
+            cache_root: ~/.github-runner-cache
+            work_root: ~/.github-runner-work
 
           - target: darwin-x64
             runner: [self-hosted, macOS, ARM64]
@@ -81,12 +84,29 @@ jobs:
             target_os: mac
             target_cpu: x64
             cross: true
+            cache_root: ~/.github-runner-cache
+            work_root: ~/.github-runner-work
 
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 360
 
+    env:
+      CACHE_ROOT: ${{ matrix.cache_root }}
+      WORK_ROOT: ${{ matrix.work_root }}
+
     steps:
       - uses: actions/checkout@v4
+
+      - name: Resolve paths
+        shell: bash
+        run: |
+          # Expand ~ to actual home dir for macOS runners
+          CACHE_ROOT="${CACHE_ROOT/#\~/$HOME}"
+          WORK_ROOT="${WORK_ROOT/#\~/$HOME}"
+          echo "CACHE_ROOT=$CACHE_ROOT" >> "$GITHUB_ENV"
+          echo "WORK_ROOT=$WORK_ROOT" >> "$GITHUB_ENV"
+          echo "CHROMIUM_SRC=$WORK_ROOT/chromium/src" >> "$GITHUB_ENV"
+          mkdir -p "$CACHE_ROOT" "$WORK_ROOT"
 
       - name: Set up depot_tools
         shell: bash
@@ -106,7 +126,7 @@ jobs:
           UPSTREAM_VERSION: ${{ inputs.upstream_version }}
         run: |
           set -euo pipefail
-          WORK=/work/chromium
+          WORK="$WORK_ROOT/chromium"
 
           # Create .gclient if missing
           if [ ! -f "$WORK/.gclient" ]; then
@@ -176,7 +196,6 @@ jobs:
         env:
           TARGET_OS: ${{ matrix.target_os }}
           TARGET_CPU: ${{ matrix.target_cpu }}
-          IS_CROSS: ${{ matrix.cross }}
         run: |
           set -euo pipefail
           cd "$CHROMIUM_SRC"

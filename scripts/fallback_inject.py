@@ -258,11 +258,11 @@ def fallback_11():
     if "IsPdfViewerAvailable()" not in content:
         return False
 
-    # Simple replacement: make the check always true instead of
-    # trying to restructure the code block
+    # Only replace the if-call, not the function definition
     content = content.replace(
-        "IsPdfViewerAvailable()",
-        "true /* Stealth: always report PDF plugins */",
+        "if (IsPdfViewerAvailable())",
+        "if (true /* Stealth: always report PDF plugins */)",
+        1,  # replace only first occurrence
     )
 
     with open(f, "w") as fh:

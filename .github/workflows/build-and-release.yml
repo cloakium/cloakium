@@ -72,14 +72,6 @@ jobs:
             cache_root: ~/.github-runner-cache
             work_root: ~/.github-runner-work
 
-          - target: darwin-x64
-            runner: [self-hosted, macOS, ARM64]
-            asset: stealthium-darwin-x64.zip
-            target_os: mac
-            target_cpu: x64
-            cross: true
-            cache_root: ~/.github-runner-cache
-            work_root: ~/.github-runner-work
 
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 360
@@ -395,7 +387,6 @@ jobs:
             "stealthium-linux-amd64.tar.zst"
             "stealthium-linux-arm64.tar.zst"
             "stealthium-darwin-arm64.zip"
-            "stealthium-darwin-x64.zip"
           )
 
           missing=0

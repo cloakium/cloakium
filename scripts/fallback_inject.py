@@ -24,18 +24,22 @@ def inject_after_pattern(filepath, pattern, code, flags=0):
 
 
 def replace_block(filepath, start_pattern, replacement):
-    """Replace a brace-delimited block starting with start_pattern."""
+    """Replace a brace-delimited block starting with start_pattern.
+    The pattern MUST end with the opening { of the block."""
     with open(filepath) as f:
         content = f.read()
-    match = re.search(start_pattern, content)
+    match = re.search(start_pattern, content, re.DOTALL)
     if not match:
+        print(f"    DEBUG: pattern not found in {filepath}")
+        # Show first 500 chars around 'DOMPluginArray' for diagnosis
+        idx = content.find("DOMPluginArray::DOMPluginArray")
+        if idx >= 0:
+            print(f"    DEBUG: found at {idx}: {content[idx:idx+200]!r}")
         return False
-    # Find the opening brace
     start = match.start()
-    brace_start = content.index("{", match.end())
-    # Track braces to find matching close
-    depth = 0
-    i = brace_start
+    # The regex already matched the opening {, so start counting from depth=1
+    depth = 1
+    i = match.end()
     while i < len(content):
         if content[i] == "{":
             depth += 1
@@ -46,6 +50,7 @@ def replace_block(filepath, start_pattern, replacement):
                 break
         i += 1
     else:
+        print(f"    DEBUG: no matching close brace found")
         return False
     content = content[:start] + replacement + content[end:]
     with open(filepath, "w") as f:
@@ -253,21 +258,47 @@ def fallback_11():
     if "IsPdfViewerAvailable()" not in content:
         return False
 
-    # Find the if block and replace with unconditional code
-    replacement = '''DOMPluginArray::DOMPluginArray(LocalDOMWindow* window) : window_(window) {
-  // Stealth: always report PDF plugins (headless may lack plugin service)
-  Vector<String> plugins{"PDF Viewer", "Chrome PDF Viewer",
-                         "Chromium PDF Viewer", "Microsoft Edge PDF Viewer",
-                         "WebKit built-in PDF"};
-  for (auto name : plugins) {
-    dom_plugins_.push_back(MakeFakePlugin(name, window));
-  }
-}'''
-    return replace_block(
-        f,
-        r"DOMPluginArray::DOMPluginArray\(LocalDOMWindow\* window\)\s*:\s*window_\(window\)\s*\{",
-        replacement,
-    )
+    # Line-by-line: remove IsPdfViewerAvailable guard, keep inner code de-indented
+    lines = content.split("\n")
+    result = []
+    in_if_block = False
+    brace_depth = 0
+    found = False
+    for line in lines:
+        if "IsPdfViewerAvailable()" in line and not found:
+            result.append(
+                "  // Stealth: always report PDF plugins (headless may lack plugin service)"
+            )
+            found = True
+            in_if_block = True
+            brace_depth = 1  # the { at end of the if line
+            continue
+        if in_if_block:
+            brace_depth += line.count("{") - line.count("}")
+            if brace_depth <= 0:
+                # Closing } of the if block — skip it
+                in_if_block = False
+                continue
+            # Skip comment-only lines inside the if
+            if line.strip().startswith("//"):
+                continue
+            # De-indent by 2 spaces (removing one level of nesting)
+            if line.startswith("      "):
+                result.append(line[2:])
+            elif line.startswith("    "):
+                result.append(line[2:])
+            else:
+                result.append(line)
+            continue
+        result.append(line)
+
+    if not found:
+        print(f"    DEBUG: IsPdfViewerAvailable() not found")
+        return False
+
+    with open(f, "w") as fh:
+        fh.write("\n".join(result))
+    return True
 
 
 FALLBACKS = {

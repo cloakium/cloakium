@@ -16,10 +16,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxcomposite-dev libxdamage-dev libxrandr-dev \
     libgbm-dev libpango1.0-dev libasound2-dev \
     libdrm-dev libxshmfence-dev \
+    gperf libffi-dev libxkbcommon-dev \
     # Cross-compilation for ARM64
     gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
-    # Cross-compilation for Windows (clang-cl)
-    mingw-w64 \
+    crossbuild-essential-arm64 \
     # Packaging
     zip zstd \
     # sccache for build caching

@@ -60,14 +60,8 @@ jobs:
             cache_root: /cache
             work_root: /work
 
-          - target: win64
-            runner: [self-hosted, linux, x64]
-            asset: stealthium-win64.zip
-            target_os: win
-            target_cpu: x64
-            cross: true
-            cache_root: /cache
-            work_root: /work
+          # win64 removed — cross-compiling from Linux requires Windows SDK
+          # which is not available. Add back if a Windows runner is set up.
 
           - target: darwin-arm64
             runner: [self-hosted, macOS, ARM64]
@@ -167,6 +161,13 @@ jobs:
               gclient sync --shallow --no-history -D --force --reset
             }
           echo "Sync complete. Source at: $WORK/src"
+
+      - name: Install sysroot (cross-compile)
+        if: matrix.cross && matrix.target_os == 'linux'
+        shell: bash
+        run: |
+          cd "$CHROMIUM_SRC"
+          python3 build/linux/sysroot_scripts/install-sysroot.py --arch=${{ matrix.target_cpu }}
 
       - name: Apply patches
         shell: bash
@@ -282,11 +283,6 @@ jobs:
             echo 'angle_enable_metal = false' >> "$BUILD_DIR/args.gn"
           fi
 
-          # Cross-compilation args
-          if [ "$TARGET_OS" = "win" ]; then
-            echo 'target_os = "win"' >> "$BUILD_DIR/args.gn"
-          fi
-
           # sccache if available
           if command -v sccache &>/dev/null; then
             echo 'cc_wrapper = "sccache"' >> "$BUILD_DIR/args.gn"
@@ -365,17 +361,6 @@ jobs:
               cd "$BUILD_DIR"
               zip -qr "$DIST/$ASSET_NAME" Chromium.app/
               ;;
-            win)
-              # Package chrome.exe + supporting files
-              cd "$BUILD_DIR"
-              zip -qr "$DIST/$ASSET_NAME" \
-                chrome.exe chrome_elf.dll \
-                *.pak *.bin *.dat *.dll \
-                locales/ \
-                swiftshader/ \
-                v8_context_snapshot.bin \
-                2>/dev/null || true
-              ;;
           esac
 
           echo "Packaged: $DIST/$ASSET_NAME ($(du -h "$DIST/$ASSET_NAME" | cut -f1))"
@@ -398,7 +383,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify all 5 assets exist on the release
+      - name: Verify all assets exist on the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -409,7 +394,6 @@ jobs:
           required=(
             "stealthium-linux-amd64.tar.zst"
             "stealthium-linux-arm64.tar.zst"
-            "stealthium-win64.zip"
             "stealthium-darwin-arm64.zip"
             "stealthium-darwin-x64.zip"
           )

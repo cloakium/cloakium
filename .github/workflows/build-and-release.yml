@@ -270,9 +270,12 @@ jobs:
           target_cpu = "$TARGET_CPU"
           GNEOF
 
-          # macOS: disable Metal backend (requires separate toolchain download)
+          # macOS: use Xcode 16.2 SDK (macOS 26 SDK has breaking changes)
           if [ "$TARGET_OS" = "mac" ]; then
-            echo 'angle_enable_metal = false' >> "$BUILD_DIR/args.gn"
+            SDK_PATH="/Applications/Xcode-16.2.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.2.sdk"
+            if [ -d "$SDK_PATH" ]; then
+              echo "mac_sdk_path = \"$SDK_PATH\"" >> "$BUILD_DIR/args.gn"
+            fi
           fi
 
           # sccache if available

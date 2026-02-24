@@ -1,0 +1,22 @@
+diff --git a/chrome/test/chromedriver/chrome/devtools_client_impl.cc b/chrome/test/chromedriver/chrome/devtools_client_impl.cc
+index 64dfc3decf..0a390cf8f0 100644
+--- a/chrome/test/chromedriver/chrome/devtools_client_impl.cc
++++ b/chrome/test/chromedriver/chrome/devtools_client_impl.cc
+@@ -583,16 +583,7 @@ Status DevToolsClientImpl::SetUpDevTools() {
+ 
+     // This is a page or frame level DevToolsClient
+     base::DictValue params;
+-    std::string script =
+-        "(function () {"
+-        "window.cdc_adoQpoasnfa76pfcZLmcfl_Array = window.Array;"
+-        "window.cdc_adoQpoasnfa76pfcZLmcfl_Object = window.Object;"
+-        "window.cdc_adoQpoasnfa76pfcZLmcfl_Promise = window.Promise;"
+-        "window.cdc_adoQpoasnfa76pfcZLmcfl_Proxy = window.Proxy;"
+-        "window.cdc_adoQpoasnfa76pfcZLmcfl_Symbol = window.Symbol;"
+-        "window.cdc_adoQpoasnfa76pfcZLmcfl_JSON = window.JSON;"
+-        "window.cdc_adoQpoasnfa76pfcZLmcfl_Window = window.Window;"
+-        "}) ();";
++    std::string script = "(function () {}) ();";
+     params.Set("source", script);
+     Status status = SendCommandAndIgnoreResponse(
+         "Page.addScriptToEvaluateOnNewDocument", params);

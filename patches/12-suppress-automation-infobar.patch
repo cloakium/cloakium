@@ -1,0 +1,16 @@
+diff --git a/chrome/browser/ui/startup/automation_infobar_delegate.cc b/chrome/browser/ui/startup/automation_infobar_delegate.cc
+index 9eee75ae4c..91554f6b76 100644
+--- a/chrome/browser/ui/startup/automation_infobar_delegate.cc
++++ b/chrome/browser/ui/startup/automation_infobar_delegate.cc
+@@ -15,9 +15,8 @@
+ 
+ // static
+ void AutomationInfoBarDelegate::Create() {
+-  std::unique_ptr<ConfirmInfoBarDelegate> delegate(
+-      new AutomationInfoBarDelegate());
+-  GlobalConfirmInfoBar::Show(std::move(delegate));
++  // Stealth: suppress automation infobar
++  return;
+ }
+ 
+ // static

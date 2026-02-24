@@ -1,0 +1,45 @@
+diff --git a/third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.cc b/third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.cc
+index 3006cad0fb..168957b1b2 100644
+--- a/third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.cc
++++ b/third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.cc
+@@ -13,6 +13,8 @@
+ 
+ #include "base/check.h"
+ #include "base/check_op.h"
++#include "base/command_line.h"
++#include "base/strings/string_number_conversions.h"
+ #include "base/location.h"
+ #include "base/memory/scoped_refptr.h"
+ #include "base/memory/weak_ptr.h"
+@@ -525,6 +527,31 @@ ImageData* BaseRenderingContext2D::getImageDataInternal(
+     }
+   }
+ 
++  // Stealth: add per-session noise to canvas pixel data for fingerprint
++  // variation when --fingerprint=SEED is set.
++  {
++    const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
++    if (cmd->HasSwitch("fingerprint")) {
++      int seed = 0;
++      base::StringToInt(cmd->GetSwitchValueASCII("fingerprint"), &seed);
++      SkPixmap pm = image_data->GetSkPixmap();
++      uint8_t* pixels = static_cast<uint8_t*>(pm.writable_addr());
++      size_t byte_len = pm.computeByteSize();
++      for (size_t i = 0; i < byte_len; i += 4) {
++        uint32_t h = static_cast<uint32_t>(i) ^ static_cast<uint32_t>(seed);
++        h = (h ^ (h >> 16)) * 0x45d9f3b;
++        h = (h ^ (h >> 16)) * 0x45d9f3b;
++        h = h ^ (h >> 16);
++        for (int c = 0; c < 3; c++) {
++          int val = UNSAFE_TODO(pixels[i + c]);
++          int noise = (h >> (c * 8)) & 1 ? 1 : -1;
++          val = std::clamp(val + noise, 0, 255);
++          UNSAFE_TODO(pixels[i + c]) = static_cast<uint8_t>(val);
++        }
++      }
++    }
++  }
++
+   return image_data;
+ }
+ 

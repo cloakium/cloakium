@@ -1,0 +1,16 @@
+diff --git a/content/browser/renderer_host/render_process_host_impl.cc b/content/browser/renderer_host/render_process_host_impl.cc
+index 43d91211e3..840c5a42e7 100644
+--- a/content/browser/renderer_host/render_process_host_impl.cc
++++ b/content/browser/renderer_host/render_process_host_impl.cc
+@@ -3833,6 +3833,11 @@ void RenderProcessHostImpl::PropagateBrowserCommandLineToRenderer(
+ #if BUILDFLAG(IS_CHROMEOS)
+       switches::kSchedulerBoostUrgent,
+ #endif
++      switches::kFingerprint,
++      switches::kFingerprintPlatform,
++      switches::kFingerprintHardwareConcurrency,
++      switches::kFingerprintGpuVendor,
++      switches::kFingerprintGpuRenderer,
+   };
+   renderer_cmd->CopySwitchesFrom(browser_cmd, kSwitchNames);
+ 

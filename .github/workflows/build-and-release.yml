@@ -1,0 +1,346 @@
+name: Build + Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_version:
+        description: "Upstream Stable version (e.g. 136.0.7103.113)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ inputs.upstream_version }}
+  cancel-in-progress: false
+
+env:
+  # Persistent cache root on self-hosted runners (Docker volume mount)
+  CACHE_ROOT: /cache
+  CHROMIUM_SRC: /work/chromium/src
+
+jobs:
+  ensure-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create GitHub Release if missing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${{ inputs.upstream_version }}"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $tag already exists."
+            exit 0
+          fi
+          gh release create "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$tag" \
+            --notes "Stealthium build based on upstream Chrome Stable $tag (CfT last-known-good)."
+
+  build:
+    needs: ensure-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-amd64
+            runner: [self-hosted, linux, x64]
+            asset: stealthium-linux-amd64.tar.zst
+            target_os: linux
+            target_cpu: x64
+            cross: false
+
+          - target: linux-arm64
+            runner: [self-hosted, linux, x64]
+            asset: stealthium-linux-arm64.tar.zst
+            target_os: linux
+            target_cpu: arm64
+            cross: true
+
+          - target: win64
+            runner: [self-hosted, linux, x64]
+            asset: stealthium-win64.zip
+            target_os: win
+            target_cpu: x64
+            cross: true
+
+          - target: darwin-arm64
+            runner: [self-hosted, macOS, ARM64]
+            asset: stealthium-darwin-arm64.zip
+            target_os: mac
+            target_cpu: arm64
+            cross: false
+
+          - target: darwin-x64
+            runner: [self-hosted, macOS, ARM64]
+            asset: stealthium-darwin-x64.zip
+            target_os: mac
+            target_cpu: x64
+            cross: true
+
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 360
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up depot_tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -d "$CACHE_ROOT/depot_tools" ]; then
+            git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git \
+              "$CACHE_ROOT/depot_tools"
+          else
+            git -C "$CACHE_ROOT/depot_tools" pull --ff-only || true
+          fi
+          echo "$CACHE_ROOT/depot_tools" >> "$GITHUB_PATH"
+
+      - name: Sync Chromium source
+        shell: bash
+        env:
+          UPSTREAM_VERSION: ${{ inputs.upstream_version }}
+        run: |
+          set -euo pipefail
+          WORK=/work/chromium
+
+          # Create .gclient if missing
+          if [ ! -f "$WORK/.gclient" ]; then
+            mkdir -p "$WORK"
+            cat > "$WORK/.gclient" << 'GCEOF'
+          solutions = [{
+            "name": "src",
+            "url": "https://chromium.googlesource.com/chromium/src.git",
+            "managed": False,
+            "custom_deps": {},
+            "custom_vars": {},
+          }]
+          GCEOF
+          fi
+
+          # Initial fetch or update
+          if [ ! -d "$WORK/src/.git" ]; then
+            mkdir -p "$WORK/src"
+            cd "$WORK/src"
+            git init
+            git remote add origin https://chromium.googlesource.com/chromium/src.git
+            # Fetch only the tag we need (shallow)
+            git fetch --depth=1 origin "refs/tags/$UPSTREAM_VERSION"
+            git checkout FETCH_HEAD
+          else
+            cd "$WORK/src"
+            # If we already have this version checked out, skip
+            current="$(git describe --tags --exact-match 2>/dev/null || true)"
+            if [ "$current" != "$UPSTREAM_VERSION" ]; then
+              git fetch --depth=1 origin "refs/tags/$UPSTREAM_VERSION"
+              git checkout FETCH_HEAD
+            fi
+          fi
+
+          # Sync dependencies
+          cd "$WORK"
+          gclient sync --nohooks --no-history -D
+
+          # Run hooks
+          cd "$WORK"
+          gclient runhooks
+
+      - name: Apply patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$CHROMIUM_SRC"
+
+          # Reset any previous patches
+          git checkout -- . 2>/dev/null || true
+
+          # Apply all patches in order
+          for patch in "$GITHUB_WORKSPACE/patches/"*.patch; do
+            echo "Applying: $(basename "$patch")"
+            git apply --3way "$patch" || {
+              echo "WARN: patch $(basename "$patch") failed, trying with fuzz..."
+              git apply --3way --recount "$patch" || {
+                echo "ERROR: patch $(basename "$patch") could not be applied"
+                exit 1
+              }
+            }
+          done
+          echo "All patches applied."
+
+      - name: Generate build config
+        shell: bash
+        env:
+          TARGET_OS: ${{ matrix.target_os }}
+          TARGET_CPU: ${{ matrix.target_cpu }}
+          IS_CROSS: ${{ matrix.cross }}
+        run: |
+          set -euo pipefail
+          cd "$CHROMIUM_SRC"
+          BUILD_DIR="out/Stealthium-${{ matrix.target }}"
+          mkdir -p "$BUILD_DIR"
+
+          # Base args common to all targets
+          cat > "$BUILD_DIR/args.gn" << GNEOF
+          is_debug = false
+          is_official_build = true
+          symbol_level = 0
+          blink_symbol_level = 0
+          enable_nacl = false
+          is_component_build = false
+          proprietary_codecs = true
+          ffmpeg_branding = "Chrome"
+          target_cpu = "$TARGET_CPU"
+          GNEOF
+
+          # Cross-compilation args
+          if [ "$TARGET_OS" = "win" ]; then
+            echo 'target_os = "win"' >> "$BUILD_DIR/args.gn"
+          fi
+
+          # sccache if available
+          if command -v sccache &>/dev/null; then
+            echo 'cc_wrapper = "sccache"' >> "$BUILD_DIR/args.gn"
+          fi
+
+          echo "=== args.gn ==="
+          cat "$BUILD_DIR/args.gn"
+
+          gn gen "$BUILD_DIR"
+
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$CHROMIUM_SRC"
+          BUILD_DIR="out/Stealthium-${{ matrix.target }}"
+
+          autoninja -C "$BUILD_DIR" chrome
+
+      - name: Smoke test
+        shell: bash
+        env:
+          TARGET_OS: ${{ matrix.target_os }}
+        run: |
+          set -euo pipefail
+          cd "$CHROMIUM_SRC"
+          BUILD_DIR="out/Stealthium-${{ matrix.target }}"
+
+          # Only run smoke test for native builds (not cross-compiled)
+          if [ "${{ matrix.cross }}" = "true" ]; then
+            echo "Cross-compiled build — skipping smoke test"
+            exit 0
+          fi
+
+          case "$TARGET_OS" in
+            linux)
+              "$BUILD_DIR/chrome" --headless --disable-gpu --no-sandbox \
+                --dump-dom "data:text/html,<h1>smoke</h1>" 2>/dev/null | grep -q smoke
+              echo "Smoke test passed"
+              ;;
+            mac)
+              "$BUILD_DIR/Chromium.app/Contents/MacOS/Chromium" --headless --disable-gpu \
+                --dump-dom "data:text/html,<h1>smoke</h1>" 2>/dev/null | grep -q smoke
+              echo "Smoke test passed"
+              ;;
+            *)
+              echo "No native smoke test for $TARGET_OS"
+              ;;
+          esac
+
+      - name: Package artifact
+        shell: bash
+        env:
+          TARGET_OS: ${{ matrix.target_os }}
+          ASSET_NAME: ${{ matrix.asset }}
+        run: |
+          set -euo pipefail
+          cd "$CHROMIUM_SRC"
+          BUILD_DIR="out/Stealthium-${{ matrix.target }}"
+          DIST="$GITHUB_WORKSPACE/dist"
+          mkdir -p "$DIST"
+
+          case "$TARGET_OS" in
+            linux)
+              # Package chrome binary + supporting files
+              tar -C "$BUILD_DIR" -cf - \
+                chrome chrome_sandbox chrome_crashpad_handler \
+                *.pak *.bin *.dat \
+                locales/ \
+                swiftshader/ \
+                v8_context_snapshot.bin \
+                2>/dev/null | zstd -T0 -19 > "$DIST/$ASSET_NAME"
+              ;;
+            mac)
+              # Package the .app bundle
+              cd "$BUILD_DIR"
+              zip -qr "$DIST/$ASSET_NAME" Chromium.app/
+              ;;
+            win)
+              # Package chrome.exe + supporting files
+              cd "$BUILD_DIR"
+              zip -qr "$DIST/$ASSET_NAME" \
+                chrome.exe chrome_elf.dll \
+                *.pak *.bin *.dat *.dll \
+                locales/ \
+                swiftshader/ \
+                v8_context_snapshot.bin \
+                2>/dev/null || true
+              ;;
+          esac
+
+          echo "Packaged: $DIST/$ASSET_NAME ($(du -h "$DIST/$ASSET_NAME" | cut -f1))"
+
+      - name: Upload asset to GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${{ inputs.upstream_version }}"
+          file="dist/${{ matrix.asset }}"
+          gh release upload "$tag" "$file" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
+
+  verify:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify all 5 assets exist on the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${{ inputs.upstream_version }}"
+          assets="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name')"
+
+          required=(
+            "stealthium-linux-amd64.tar.zst"
+            "stealthium-linux-arm64.tar.zst"
+            "stealthium-win64.zip"
+            "stealthium-darwin-arm64.zip"
+            "stealthium-darwin-x64.zip"
+          )
+
+          missing=0
+          for a in "${required[@]}"; do
+            if echo "$assets" | grep -qx "$a"; then
+              echo "OK: $a"
+            else
+              echo "MISSING: $a"
+              missing=1
+            fi
+          done
+
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::Release $tag is incomplete."
+            exit 1
+          fi
+
+          echo "Release $tag has all required assets."

@@ -1,0 +1,27 @@
+diff --git a/third_party/blink/renderer/modules/plugins/dom_plugin_array.cc b/third_party/blink/renderer/modules/plugins/dom_plugin_array.cc
+index 534277a85a..212b98036d 100644
+--- a/third_party/blink/renderer/modules/plugins/dom_plugin_array.cc
++++ b/third_party/blink/renderer/modules/plugins/dom_plugin_array.cc
+@@ -53,16 +53,12 @@ DOMPlugin* MakeFakePlugin(String plugin_name, LocalDOMWindow* window) {
+ }  // namespace
+ 
+ DOMPluginArray::DOMPluginArray(LocalDOMWindow* window) : window_(window) {
+-  if (IsPdfViewerAvailable()) {
+-    // See crbug.com/1164635 and https://github.com/whatwg/html/pull/6738.
+-    // To reduce fingerprinting and make plugins/mimetypes more
+-    // interoperable, this is the spec'd, hard-coded list of plugins:
+-    Vector<String> plugins{"PDF Viewer", "Chrome PDF Viewer",
+-                           "Chromium PDF Viewer", "Microsoft Edge PDF Viewer",
+-                           "WebKit built-in PDF"};
+-    for (auto name : plugins) {
+-      dom_plugins_.push_back(MakeFakePlugin(name, window));
+-    }
++  // Stealth: always report PDF plugins (headless may lack plugin service)
++  Vector<String> plugins{"PDF Viewer", "Chrome PDF Viewer",
++                         "Chromium PDF Viewer", "Microsoft Edge PDF Viewer",
++                         "WebKit built-in PDF"};
++  for (auto name : plugins) {
++    dom_plugins_.push_back(MakeFakePlugin(name, window));
+   }
+ }
+ 

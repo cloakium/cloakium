@@ -1,0 +1,48 @@
+name: Check upstream Chrome Stable (CfT)
+
+on:
+  schedule:
+    - cron: "23 */3 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch latest upstream Stable version (CfT last-known-good)
+        id: upstream
+        run: |
+          set -euo pipefail
+          v="$(curl -fsSL \
+            "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions.json" \
+            | jq -r '.channels.Stable.version')"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "Upstream Stable: $v"
+
+      - name: Read latest GitHub Release tag
+        id: last
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName 2>/dev/null || true)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Last release tag: ${tag:-<none>}"
+
+      - name: Dispatch build if upstream changed
+        if: steps.upstream.outputs.version != steps.last.outputs.tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          v="${{ steps.upstream.outputs.version }}"
+          echo "New upstream stable detected: $v"
+          gh workflow run build-and-release.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            -f upstream_version="$v"

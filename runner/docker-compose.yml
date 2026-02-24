@@ -1,0 +1,56 @@
+# Docker Compose for Stealthium self-hosted GitHub Actions runners
+#
+# Usage:
+#   1. Get a runner registration token from:
+#      https://github.com/dstockton/stealthium/settings/actions/runners/new
+#      Or via API:
+#      gh api repos/dstockton/stealthium/actions/runners/registration-token -q .token
+#
+#   2. Set environment:
+#      export RUNNER_TOKEN=<token>
+#
+#   3. Start:
+#      docker compose up -d --build
+#
+# The runner uses persistent volumes for:
+#   - /cache  — depot_tools, sccache cache
+#   - /work   — Chromium source + build output (reused across builds)
+
+services:
+  runner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      GITHUB_REPO: dstockton/stealthium
+      RUNNER_TOKEN: ${RUNNER_TOKEN}
+      RUNNER_NAME: stealthium-linux-01
+      RUNNER_LABELS: self-hosted,linux,x64
+      SCCACHE_DIR: /cache/sccache
+      SCCACHE_CACHE_SIZE: 50G
+    volumes:
+      # Persistent storage for build caches and source
+      - runner-cache:/cache
+      - runner-work:/work
+    restart: unless-stopped
+    # Chromium builds are resource-hungry
+    deploy:
+      resources:
+        limits:
+          memory: 64G
+        reservations:
+          memory: 32G
+
+volumes:
+  runner-cache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /data/github-runners/cache
+  runner-work:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /data/github-runners/work

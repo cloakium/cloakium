@@ -1,0 +1,41 @@
+diff --git a/third_party/blink/renderer/core/dom/element.cc b/third_party/blink/renderer/core/dom/element.cc
+index d8d7827514..d27618d669 100644
+--- a/third_party/blink/renderer/core/dom/element.cc
++++ b/third_party/blink/renderer/core/dom/element.cc
+@@ -32,7 +32,9 @@
+ #include <memory>
+ #include <utility>
+ 
++#include "base/command_line.h"
+ #include "base/containers/adapters.h"
++#include "base/strings/string_number_conversions.h"
+ #include "base/feature_list.h"
+ #include "cc/input/snap_selection_strategy.h"
+ #include "third_party/blink/public/common/features.h"
+@@ -3480,7 +3482,25 @@ gfx::RectF Element::GetBoundingClientRectNoLifecycleUpdate() const {
+ DOMRect* Element::GetBoundingClientRect() {
+   GetDocument().EnsurePaintLocationDataValidForNode(
+       this, DocumentUpdateReason::kJavaScript);
+-  return DOMRect::FromRectF(GetBoundingClientRectNoLifecycleUpdate());
++  DOMRect* rect = DOMRect::FromRectF(GetBoundingClientRectNoLifecycleUpdate());
++
++  const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
++  if (cmd->HasSwitch("fingerprint")) {
++    int seed = 0;
++    base::StringToInt(cmd->GetSwitchValueASCII("fingerprint"), &seed);
++    auto noise = [&](unsigned idx) -> double {
++      uint32_t h = idx ^ static_cast<uint32_t>(seed);
++      h = (h ^ (h >> 16)) * 0x45d9f3b;
++      h = h ^ (h >> 16);
++      return ((h & 0xFFFF) / 65535.0 - 0.5) * 0.001;
++    };
++    rect->setX(rect->x() + noise(0));
++    rect->setY(rect->y() + noise(1));
++    rect->setWidth(rect->width() + noise(2));
++    rect->setHeight(rect->height() + noise(3));
++  }
++
++  return rect;
+ }
+ 
+ DOMRect* Element::GetBoundingClientRectForBinding() {

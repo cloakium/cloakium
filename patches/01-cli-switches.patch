@@ -1,0 +1,35 @@
+diff --git a/content/public/common/content_switches.cc b/content/public/common/content_switches.cc
+index f5e3b17d56..2f2d68b77f 100644
+--- a/content/public/common/content_switches.cc
++++ b/content/public/common/content_switches.cc
+@@ -929,6 +929,14 @@ const char kEnableAggressiveDOMStorageFlushing[] =
+ // Enable indication that browser is controlled by automation.
+ const char kEnableAutomation[] = "enable-automation";
+ 
++// Stealth fingerprint switches for per-session variation.
++const char kFingerprint[] = "fingerprint";
++const char kFingerprintPlatform[] = "fingerprint-platform";
++const char kFingerprintHardwareConcurrency[] =
++    "fingerprint-hardware-concurrency";
++const char kFingerprintGpuVendor[] = "fingerprint-gpu-vendor";
++const char kFingerprintGpuRenderer[] = "fingerprint-gpu-renderer";
++
+ #if BUILDFLAG(IS_IOS)
+ // For mobile devices, tests should include a viewport meta tag to specify page
+ // dimension adjustments. Omitting the tag can lead to automatic resizing to
+diff --git a/content/public/common/content_switches.h b/content/public/common/content_switches.h
+index af26e0b2cf..7b2405be06 100644
+--- a/content/public/common/content_switches.h
++++ b/content/public/common/content_switches.h
+@@ -98,6 +98,11 @@ CONTENT_EXPORT extern const char kDomAutomationController[];
+ extern const char kDisable2dCanvasClipAntialiasing[];
+ CONTENT_EXPORT extern const char kEnableAggressiveDOMStorageFlushing[];
+ CONTENT_EXPORT extern const char kEnableAutomation[];
++CONTENT_EXPORT extern const char kFingerprint[];
++CONTENT_EXPORT extern const char kFingerprintPlatform[];
++CONTENT_EXPORT extern const char kFingerprintHardwareConcurrency[];
++CONTENT_EXPORT extern const char kFingerprintGpuVendor[];
++CONTENT_EXPORT extern const char kFingerprintGpuRenderer[];
+ CONTENT_EXPORT extern const char kEnableBlinkFeatures[];
+ CONTENT_EXPORT extern const char kEnableCaretBrowsing[];
+ CONTENT_EXPORT extern const char kEnableDisplayList2dCanvas[];

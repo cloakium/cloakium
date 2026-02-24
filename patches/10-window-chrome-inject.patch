@@ -1,0 +1,30 @@
+diff --git a/chrome/renderer/chrome_content_renderer_client.cc b/chrome/renderer/chrome_content_renderer_client.cc
+index 99a62b0e4b..48b2c9a12d 100644
+--- a/chrome/renderer/chrome_content_renderer_client.cc
++++ b/chrome/renderer/chrome_content_renderer_client.cc
+@@ -176,6 +176,7 @@
+ #include "third_party/blink/public/web/web_plugin_container.h"
+ #include "third_party/blink/public/web/web_plugin_params.h"
+ #include "third_party/blink/public/web/web_script_controller.h"
++#include "third_party/blink/public/web/web_script_source.h"
+ #include "third_party/blink/public/web/web_security_policy.h"
+ #include "third_party/blink/public/web/web_view.h"
+ #include "ui/base/l10n/l10n_util.h"
+@@ -1425,6 +1426,17 @@ ChromeContentRendererClient::CreateSpeechRecognitionClient(
+ 
+ void ChromeContentRendererClient::RunScriptsAtDocumentStart(
+     content::RenderFrame* render_frame) {
++  // Stealth: ensure window.chrome exists (may be absent in headless)
++  if (render_frame && render_frame->GetWebFrame()) {
++    blink::WebScriptSource src(
++        blink::WebString::FromUTF8(
++            "if(typeof window.chrome==='undefined'){"
++            "window.chrome={runtime:{}};"
++            "}else if(!window.chrome.runtime){"
++            "window.chrome.runtime={};"
++            "}"));
++    render_frame->GetWebFrame()->ExecuteScript(src);
++  }
+ #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+   extensions::ExtensionsRendererClient::Get()->RunScriptsAtDocumentStart(
+       render_frame);

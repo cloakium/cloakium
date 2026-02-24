@@ -128,36 +128,33 @@ jobs:
           set -euo pipefail
           WORK="$WORK_ROOT/chromium"
 
-          # Create .gclient if missing
-          if [ ! -f "$WORK/.gclient" ]; then
+          write_gclient() {
             mkdir -p "$WORK"
-            cat > "$WORK/.gclient" << 'GCEOF'
+            cat > "$WORK/.gclient" << GCEOF
           solutions = [{
             "name": "src",
-            "url": "https://chromium.googlesource.com/chromium/src.git@UPSTREAM_TAG",
+            "url": "https://chromium.googlesource.com/chromium/src.git@$UPSTREAM_VERSION",
             "managed": False,
             "custom_deps": {},
             "custom_vars": {},
           }]
           GCEOF
+          }
+
+          # Create or update .gclient
+          if [ ! -f "$WORK/.gclient" ]; then
+            write_gclient
+          else
+            sed -i.bak "s|src.git@.*\"|src.git@$UPSTREAM_VERSION\"|" "$WORK/.gclient"
+            rm -f "$WORK/.gclient.bak"
           fi
 
-          # Update .gclient to pin the target version
-          # sed -i works differently on macOS vs Linux; use .bak then remove
-          sed -i.bak "s|src.git@.*\"|src.git@$UPSTREAM_VERSION\"|" "$WORK/.gclient"
-          rm -f "$WORK/.gclient.bak"
-
-          # Let gclient handle the full fetch + deps sync
           cd "$WORK"
-          # --force --reset: recover from interrupted/corrupted state
-          # --shallow --no-history: minimize download size
-          # -D: delete unversioned directories
           gclient sync --shallow --no-history -D --force --reset \
             || {
-              echo "Sync failed, cleaning corrupted deps and retrying..."
-              # Remove deps with broken git state
-              find "$WORK/src" -name ".git" -type d -exec sh -c \
-                'cd "$1/.." && git rev-parse HEAD >/dev/null 2>&1 || { echo "Removing corrupted: $1"; rm -rf "$1/.."; }' _ {} \;
+              echo "Sync failed — nuking src/ and retrying from scratch..."
+              rm -rf "$WORK/src"
+              write_gclient
               gclient sync --shallow --no-history -D --force --reset
             }
           echo "Sync complete. Source at: $WORK/src"
@@ -168,25 +165,23 @@ jobs:
           set -euo pipefail
           cd "$CHROMIUM_SRC"
 
-          # Reset any previous patches
-          git checkout -- . 2>/dev/null || true
+          # Hard reset to guarantee clean tree
+          git reset --hard HEAD
+          git clean -fd 2>/dev/null || true
 
-          # Phase 1: Ensure required #include headers exist in target files.
-          # These are version-independent — we just need the include present.
+          # Phase 1: Inject required #include headers (version-independent).
           ensure_include() {
             local file="$1" header="$2"
             if ! grep -qF "$header" "$file"; then
-              # Insert after the last existing #include line
-              local last_include_line
-              last_include_line="$(grep -n '^#include' "$file" | tail -1 | cut -d: -f1)"
-              sed -i.bak "${last_include_line}a\\
+              local last
+              last="$(grep -n '^#include' "$file" | tail -1 | cut -d: -f1)"
+              sed -i.bak "${last}a\\
           ${header}" "$file"
               rm -f "$file.bak"
               echo "  Injected $header into $(basename "$file")"
             fi
           }
 
-          # Files that need base/command_line.h
           for f in \
             third_party/blink/renderer/core/frame/navigator.cc \
             third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc \
@@ -195,49 +190,58 @@ jobs:
             third_party/blink/renderer/core/frame/navigator_concurrent_hardware.cc; do
             [ -f "$f" ] && ensure_include "$f" '#include "base/command_line.h"'
           done
-
-          # Files that need base/strings/string_number_conversions.h
           for f in \
             third_party/blink/renderer/modules/webaudio/realtime_analyser.cc \
-            third_party/blink/renderer/core/dom/element.cc; do
+            third_party/blink/renderer/core/dom/element.cc \
+            third_party/blink/renderer/core/frame/navigator_concurrent_hardware.cc; do
             [ -f "$f" ] && ensure_include "$f" '#include "base/strings/string_number_conversions.h"'
           done
 
-          # Phase 2: Apply patches with fuzz, skipping already-applied include hunks
-          failed=0
+          # Phase 2: Apply patches. For each, try patch(1) first; on failure
+          # check if the functional change is already present.
+          check_applied() {
+            case "$1" in
+              01-*) grep -q 'kFingerprint\[\]' content/public/common/content_switches.cc ;;
+              02-*) grep -q 'fingerprint-platform' third_party/blink/renderer/core/frame/navigator.cc ;;
+              03-*) grep -q 'HeadlessChrome' components/embedder_support/user_agent_utils.cc && return 1; return 0 ;;
+              04-*) grep -q 'cdc_adoQpoasnfa76pfcZLmcfl' chrome/test/chromedriver/chrome/devtools_client_impl.cc && return 1; return 0 ;;
+              05-*) grep -q 'fingerprint-hardware-concurrency' third_party/blink/renderer/core/frame/navigator_concurrent_hardware.cc ;;
+              06-*) grep -q 'fingerprint-gpu-renderer' third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc ;;
+              07-*) grep -q 'Stealth: add per-session noise' third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.cc ;;
+              08-*) grep -q 'Stealth: add per-session noise to audio' third_party/blink/renderer/modules/webaudio/realtime_analyser.cc ;;
+              09-*) grep -q 'Stealth: add per-session noise to client rects' third_party/blink/renderer/core/dom/element.cc ;;
+              10-*) grep -q 'window.chrome' chrome/renderer/chrome_content_renderer_client.cc ;;
+              11-*) grep -q 'Stealth: always report PDF' third_party/blink/renderer/modules/plugins/dom_plugin_array.cc ;;
+              12-*) grep -q 'ShouldSuppressAutomationInfoBar' chrome/browser/ui/startup/automation_infobar_delegate.cc ;;
+              13-*) grep -q 'AutomationControlled.*status.*test' third_party/blink/renderer/platform/runtime_enabled_features.json5 ;;
+              14-*) grep -q 'fingerprint' content/browser/renderer_host/render_process_host_impl.cc ;;
+              *) return 1 ;;
+            esac
+          }
+
+          needs_fallback=()
           for patchfile in "$GITHUB_WORKSPACE/patches/"*.patch; do
             name="$(basename "$patchfile")"
             echo "Applying: $name"
             if patch -p1 --fuzz=3 --no-backup-if-mismatch --forward < "$patchfile" 2>&1; then
               echo "  OK: $name"
             else
-              # Check if failure was only on include hunks (already handled)
-              rejects="$(find . -name '*.rej' -newer "$patchfile" 2>/dev/null)"
-              if [ -z "$rejects" ]; then
-                echo "  OK (already applied): $name"
+              find . -name '*.rej' -delete 2>/dev/null
+              if check_applied "$name"; then
+                echo "  OK (already present): $name"
               else
-                # Check if rejects are only include lines
-                all_include_rejects=true
-                for rej in $rejects; do
-                  if grep -qvE '^\+#include|^-#include|^@@|^diff|^---|^\+\+\+|^ #include|^$' "$rej" 2>/dev/null; then
-                    all_include_rejects=false
-                  fi
-                  rm -f "$rej"
-                done
-                if $all_include_rejects; then
-                  echo "  OK (include hunks handled separately): $name"
-                else
-                  echo "  FAILED: $name"
-                  failed=1
-                fi
+                needs_fallback+=("$name")
+                echo "  DEFERRED to fallback: $name"
               fi
             fi
           done
 
-          if [ "$failed" -ne 0 ]; then
-            echo "::error::Some patches failed to apply"
-            exit 1
+          # Phase 3: Version-independent fallback injection via Python.
+          if [ ${#needs_fallback[@]} -gt 0 ]; then
+            echo "=== Phase 3: Fallback injection for ${#needs_fallback[@]} patch(es) ==="
+            python3 "$GITHUB_WORKSPACE/scripts/fallback_inject.py" "${needs_fallback[@]}"
           fi
+
           echo "All patches applied."
 
       - name: Generate build config

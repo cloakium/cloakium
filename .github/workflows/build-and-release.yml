@@ -136,18 +136,15 @@ jobs:
             "url": "https://chromium.googlesource.com/chromium/src.git@$UPSTREAM_VERSION",
             "managed": False,
             "custom_deps": {},
-            "custom_vars": {},
+            "custom_vars": {
+              "checkout_pgo_profiles": True,
+            },
           }]
           GCEOF
           }
 
-          # Create or update .gclient
-          if [ ! -f "$WORK/.gclient" ]; then
-            write_gclient
-          else
-            sed -i.bak "s|src.git@.*\"|src.git@$UPSTREAM_VERSION\"|" "$WORK/.gclient"
-            rm -f "$WORK/.gclient.bak"
-          fi
+          # Always (re)create .gclient to ensure latest settings
+          write_gclient
 
           cd "$WORK"
           gclient sync --shallow --no-history -D --force --reset \

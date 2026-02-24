@@ -134,7 +134,7 @@ jobs:
             cat > "$WORK/.gclient" << 'GCEOF'
           solutions = [{
             "name": "src",
-            "url": "https://chromium.googlesource.com/chromium/src.git",
+            "url": "https://chromium.googlesource.com/chromium/src.git@UPSTREAM_TAG",
             "managed": False,
             "custom_deps": {},
             "custom_vars": {},
@@ -142,32 +142,15 @@ jobs:
           GCEOF
           fi
 
-          # Initial fetch or update
-          if [ ! -d "$WORK/src/.git" ]; then
-            mkdir -p "$WORK/src"
-            cd "$WORK/src"
-            git init
-            git remote add origin https://chromium.googlesource.com/chromium/src.git
-            # Fetch only the tag we need (shallow)
-            git fetch --depth=1 origin "refs/tags/$UPSTREAM_VERSION"
-            git checkout FETCH_HEAD
-          else
-            cd "$WORK/src"
-            # If we already have this version checked out, skip
-            current="$(git describe --tags --exact-match 2>/dev/null || true)"
-            if [ "$current" != "$UPSTREAM_VERSION" ]; then
-              git fetch --depth=1 origin "refs/tags/$UPSTREAM_VERSION"
-              git checkout FETCH_HEAD
-            fi
-          fi
+          # Update .gclient to pin the target version
+          # sed -i works differently on macOS vs Linux; use .bak then remove
+          sed -i.bak "s|src.git@.*\"|src.git@$UPSTREAM_VERSION\"|" "$WORK/.gclient"
+          rm -f "$WORK/.gclient.bak"
 
-          # Sync dependencies
+          # Let gclient handle the full fetch + deps sync
           cd "$WORK"
-          gclient sync --nohooks --no-history -D
-
-          # Run hooks
-          cd "$WORK"
-          gclient runhooks
+          gclient sync --no-history --shallow -D --force --reset
+          echo "Sync complete. Source at: $WORK/src"
 
       - name: Apply patches
         shell: bash
@@ -178,17 +161,23 @@ jobs:
           # Reset any previous patches
           git checkout -- . 2>/dev/null || true
 
-          # Apply all patches in order
-          for patch in "$GITHUB_WORKSPACE/patches/"*.patch; do
-            echo "Applying: $(basename "$patch")"
-            git apply --3way "$patch" || {
-              echo "WARN: patch $(basename "$patch") failed, trying with fuzz..."
-              git apply --3way --recount "$patch" || {
-                echo "ERROR: patch $(basename "$patch") could not be applied"
-                exit 1
-              }
-            }
+          # Apply all patches with fuzz for cross-version compatibility
+          failed=0
+          for patchfile in "$GITHUB_WORKSPACE/patches/"*.patch; do
+            name="$(basename "$patchfile")"
+            echo "Applying: $name"
+            if patch -p1 --fuzz=3 --no-backup-if-mismatch < "$patchfile"; then
+              echo "  OK: $name"
+            else
+              echo "  FAILED: $name"
+              failed=1
+            fi
           done
+
+          if [ "$failed" -ne 0 ]; then
+            echo "::error::Some patches failed to apply"
+            exit 1
+          fi
           echo "All patches applied."
 
       - name: Generate build config

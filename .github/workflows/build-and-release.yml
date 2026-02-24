@@ -149,7 +149,17 @@ jobs:
 
           # Let gclient handle the full fetch + deps sync
           cd "$WORK"
-          gclient sync --no-history --shallow -D --force --reset
+          # --force --reset: recover from interrupted/corrupted state
+          # --shallow --no-history: minimize download size
+          # -D: delete unversioned directories
+          gclient sync --shallow --no-history -D --force --reset \
+            || {
+              echo "Sync failed, cleaning corrupted deps and retrying..."
+              # Remove deps with broken git state
+              find "$WORK/src" -name ".git" -type d -exec sh -c \
+                'cd "$1/.." && git rev-parse HEAD >/dev/null 2>&1 || { echo "Removing corrupted: $1"; rm -rf "$1/.."; }' _ {} \;
+              gclient sync --shallow --no-history -D --force --reset
+            }
           echo "Sync complete. Source at: $WORK/src"
 
       - name: Apply patches
@@ -161,16 +171,66 @@ jobs:
           # Reset any previous patches
           git checkout -- . 2>/dev/null || true
 
-          # Apply all patches with fuzz for cross-version compatibility
+          # Phase 1: Ensure required #include headers exist in target files.
+          # These are version-independent — we just need the include present.
+          ensure_include() {
+            local file="$1" header="$2"
+            if ! grep -qF "$header" "$file"; then
+              # Insert after the last existing #include line
+              local last_include_line
+              last_include_line="$(grep -n '^#include' "$file" | tail -1 | cut -d: -f1)"
+              sed -i.bak "${last_include_line}a\\
+          ${header}" "$file"
+              rm -f "$file.bak"
+              echo "  Injected $header into $(basename "$file")"
+            fi
+          }
+
+          # Files that need base/command_line.h
+          for f in \
+            third_party/blink/renderer/core/frame/navigator.cc \
+            third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc \
+            third_party/blink/renderer/modules/webaudio/realtime_analyser.cc \
+            third_party/blink/renderer/core/dom/element.cc \
+            third_party/blink/renderer/core/frame/navigator_concurrent_hardware.cc; do
+            [ -f "$f" ] && ensure_include "$f" '#include "base/command_line.h"'
+          done
+
+          # Files that need base/strings/string_number_conversions.h
+          for f in \
+            third_party/blink/renderer/modules/webaudio/realtime_analyser.cc \
+            third_party/blink/renderer/core/dom/element.cc; do
+            [ -f "$f" ] && ensure_include "$f" '#include "base/strings/string_number_conversions.h"'
+          done
+
+          # Phase 2: Apply patches with fuzz, skipping already-applied include hunks
           failed=0
           for patchfile in "$GITHUB_WORKSPACE/patches/"*.patch; do
             name="$(basename "$patchfile")"
             echo "Applying: $name"
-            if patch -p1 --fuzz=3 --no-backup-if-mismatch < "$patchfile"; then
+            if patch -p1 --fuzz=3 --no-backup-if-mismatch --forward < "$patchfile" 2>&1; then
               echo "  OK: $name"
             else
-              echo "  FAILED: $name"
-              failed=1
+              # Check if failure was only on include hunks (already handled)
+              rejects="$(find . -name '*.rej' -newer "$patchfile" 2>/dev/null)"
+              if [ -z "$rejects" ]; then
+                echo "  OK (already applied): $name"
+              else
+                # Check if rejects are only include lines
+                all_include_rejects=true
+                for rej in $rejects; do
+                  if grep -qvE '^\+#include|^-#include|^@@|^diff|^---|^\+\+\+|^ #include|^$' "$rej" 2>/dev/null; then
+                    all_include_rejects=false
+                  fi
+                  rm -f "$rej"
+                done
+                if $all_include_rejects; then
+                  echo "  OK (include hunks handled separately): $name"
+                else
+                  echo "  FAILED: $name"
+                  failed=1
+                fi
+              fi
             fi
           done
 

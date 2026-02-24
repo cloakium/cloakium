@@ -145,12 +145,12 @@ jobs:
           write_gclient
 
           cd "$WORK"
-          gclient sync --shallow --no-history -D --force --reset \
+          gclient sync --shallow --no-history -D \
             || {
               echo "Sync failed — nuking src/ and retrying from scratch..."
               rm -rf "$WORK/src"
               write_gclient
-              gclient sync --shallow --no-history -D --force --reset
+              gclient sync --shallow --no-history -D
             }
           echo "Sync complete. Source at: $WORK/src"
 

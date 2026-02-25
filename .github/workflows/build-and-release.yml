@@ -341,13 +341,17 @@ jobs:
           case "$TARGET_OS" in
             linux)
               # Package chrome binary + supporting files
-              tar -C "$BUILD_DIR" -cf - \
-                chrome chrome_sandbox chrome_crashpad_handler \
-                *.pak *.bin *.dat \
-                locales/ \
-                swiftshader/ \
-                v8_context_snapshot.bin \
-                2>/dev/null | zstd -T0 -19 > "$DIST/$ASSET_NAME"
+              cd "$BUILD_DIR"
+              find . -maxdepth 1 \( \
+                -name "chrome" -o -name "chrome_sandbox" -o \
+                -name "chrome_crashpad_handler" -o \
+                -name "*.pak" -o -name "*.bin" -o -name "*.dat" -o \
+                -name "*.so" -o -name "*.so.*" \
+              \) -o -type d \( \
+                -name "locales" -o -name "swiftshader" \
+              \) | sort > /tmp/pkg-list.txt
+              tar -cf - -T /tmp/pkg-list.txt | zstd -T0 -19 > "$DIST/$ASSET_NAME"
+              cd "$CHROMIUM_SRC"
               ;;
             mac)
               # Package the .app bundle

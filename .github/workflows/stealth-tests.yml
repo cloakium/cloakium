@@ -66,39 +66,6 @@ jobs:
           echo "STEALTH_BINARY=$BINARY" >> "$GITHUB_ENV"
           echo "Binary: $BINARY"
 
-      - name: Verify binary runs
-        run: |
-          echo "=== Direct launch test ==="
-          "$STEALTH_BINARY" --headless --no-sandbox --disable-gpu --dump-dom about:blank 2>&1 | head -20 || echo "Exit code: $?"
-          echo "=== Playwright launch test ==="
-          python3 - <<'PYEOF'
-          import os, traceback
-          from playwright.sync_api import sync_playwright
-          binary = os.environ["STEALTH_BINARY"]
-          print(f"Binary: {binary}")
-          pw = sync_playwright().start()
-          try:
-              browser = pw.chromium.launch(
-                  executable_path=binary,
-                  headless=True,
-                  args=["--no-sandbox", "--fingerprint=42"],
-                  ignore_default_args=["--enable-automation"],
-              )
-              print(f"Browser launched: {browser.browser_type.name} v{browser.version}")
-              page = browser.new_page()
-              print(f"Page created: {page.url}")
-              result = page.evaluate("navigator.userAgent")
-              print(f"UA: {result}")
-              page.close()
-              browser.close()
-              print("SUCCESS")
-          except Exception as e:
-              print(f"FAILED: {e}")
-              traceback.print_exc()
-          finally:
-              pw.stop()
-          PYEOF
-
       - name: Run stealth tests
         env:
           STEALTH_BINARY: ${{ env.STEALTH_BINARY }}

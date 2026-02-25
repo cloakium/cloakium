@@ -40,7 +40,7 @@ jobs:
       matrix:
         include:
           - target: linux-amd64
-            runner: ubuntu-latest
+            runner: blacksmith-16vcpu-ubuntu-2404
             asset: cloakium-linux-amd64.tar.zst
             target_os: linux
             target_cpu: x64

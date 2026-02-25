@@ -84,7 +84,18 @@ jobs:
           set -euo pipefail
           tag="${{ inputs.upstream_version }}"
           asset="${{ matrix.asset }}"
-          assets="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' 2>/dev/null || true)"
+
+          # Use curl (always available) instead of gh (missing on some runners)
+          assets="$(curl -fsSL \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$tag" \
+            2>/dev/null | python3 -c "
+          import sys, json
+          for a in json.load(sys.stdin).get('assets', []):
+              print(a['name'])
+          " 2>/dev/null || true)"
+
           if echo "$assets" | grep -qx "$asset"; then
             echo "Asset $asset already exists on release $tag — skipping build"
             echo "skip=true" >> "$GITHUB_OUTPUT"

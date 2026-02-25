@@ -52,12 +52,23 @@ jobs:
             exit 1
           fi
           chmod +x "$BINARY"
-          # Strip macOS quarantine to prevent Gatekeeper from killing unsigned binary
           if [ "$(uname -s)" = "Darwin" ]; then
+            # Strip quarantine and ad-hoc codesign to satisfy Gatekeeper
             xattr -cr ./cloakium-bin/
+            APP_BUNDLE="$(find ./cloakium-bin -name '*.app' -type d | head -1)"
+            if [ -n "$APP_BUNDLE" ]; then
+              codesign --sign - --force --deep "$APP_BUNDLE"
+              echo "Codesigned: $APP_BUNDLE"
+            fi
           fi
           echo "STEALTH_BINARY=$BINARY" >> "$GITHUB_ENV"
           echo "Binary: $BINARY"
+
+      - name: Verify binary runs
+        run: |
+          echo "Testing binary launch..."
+          timeout 10 "$STEALTH_BINARY" --headless --no-sandbox --disable-gpu --dump-dom about:blank 2>&1 || echo "Exit code: $?"
+          echo "Launch test complete"
 
       - name: Run stealth tests
         env:

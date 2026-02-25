@@ -40,13 +40,13 @@ jobs:
       matrix:
         include:
           - target: linux-amd64
-            runner: [self-hosted, linux, x64]
+            runner: blacksmith-8vcpu-ubuntu-2404
             asset: cloakium-linux-amd64.tar.zst
             target_os: linux
             target_cpu: x64
             cross: false
-            cache_root: /cache
-            work_root: /work
+            cache_root: /tmp/cloakium-cache
+            work_root: /tmp/cloakium-work
 
 
           - target: darwin-arm64
@@ -91,6 +91,22 @@ jobs:
           else
             echo "Metal toolchain already available"
           fi
+
+      - name: Install build dependencies (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang lld llvm \
+            python3 python3-pip python3-setuptools \
+            pkg-config libglib2.0-dev libgtk-3-dev libnss3-dev \
+            libatk1.0-dev libatk-bridge2.0-dev libcups2-dev \
+            libxcomposite-dev libxdamage-dev libxrandr-dev \
+            libgbm-dev libpango1.0-dev libasound2-dev \
+            libdrm-dev libxshmfence-dev \
+            gperf libffi-dev libxkbcommon-dev \
+            zip zstd
 
       - name: Set up depot_tools
         shell: bash

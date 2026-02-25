@@ -117,7 +117,7 @@ jobs:
             libgbm-dev libpango1.0-dev libasound2-dev \
             libdrm-dev libxshmfence-dev \
             gperf libffi-dev libxkbcommon-dev \
-            zip zstd
+            zip zstd pv
 
       - name: Resolve paths
         if: steps.check-asset.outputs.skip == 'false'
@@ -486,8 +486,25 @@ jobs:
           fi
           CACHE_KEY="${{ matrix.target }}"
           echo "Saving cache: $CACHE_KEY..."
+
+          # Measure size for progress reporting
+          if du -sb "$WORK_ROOT/chromium" >/dev/null 2>&1; then
+            BYTES=$(du -sb "$WORK_ROOT/chromium" | cut -f1)
+          else
+            BYTES=$(( $(du -sk "$WORK_ROOT/chromium" | cut -f1) * 1024 ))
+          fi
+          echo "Cache size: $(du -sh "$WORK_ROOT/chromium" | cut -f1) ($BYTES bytes)"
+
+          # Use pv for progress if available, otherwise cat
+          if command -v pv &>/dev/null; then
+            PIPE="pv -s $BYTES"
+          else
+            PIPE="cat"
+          fi
+
           tar -cf - -C "$WORK_ROOT" chromium \
-            | zstd -T0 -3 \
+            | $PIPE \
+            | zstd -T0 -1 \
             | "$CACHE_ROOT/mc" pipe "cache/cloakium-cache/${CACHE_KEY}.tar.zst.tmp"
           "$CACHE_ROOT/mc" mv "cache/cloakium-cache/${CACHE_KEY}.tar.zst.tmp" \
             "cache/cloakium-cache/${CACHE_KEY}.tar.zst"
@@ -529,3 +546,12 @@ jobs:
           fi
 
           echo "Release $tag has all required assets."
+
+      - name: Mark release as latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${{ inputs.upstream_version }}"
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --latest
+          echo "Release $tag marked as latest."

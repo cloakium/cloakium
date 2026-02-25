@@ -3,3 +3,6 @@ dist/
 __pycache__/
 .venv/
 .env
+reports/results.xml
+reports/test-output.txt
+cloakium-bin/

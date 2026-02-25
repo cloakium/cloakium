@@ -12,7 +12,17 @@ permissions:
 jobs:
   test:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-amd64
+            runner: ubuntu-latest
+            binary_name: chrome
+          - platform: darwin-arm64
+            runner: macos-latest
+            binary_name: Chromium
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
 
     steps:
@@ -32,15 +42,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          python3 scripts/download.py --dest ./cloakium-bin
-          echo "STEALTH_BINARY=$(tail -1 <<< "$(python3 scripts/download.py --dest ./cloakium-bin 2>&1)")" >> "$GITHUB_ENV"
+          python3 scripts/download.py --platform ${{ matrix.platform }} --dest ./cloakium-bin
 
       - name: Resolve binary path
         run: |
-          # find the chrome binary in cloakium-bin/
-          BINARY="$(find ./cloakium-bin -name chrome -type f | head -1)"
+          BINARY="$(find ./cloakium-bin -name "${{ matrix.binary_name }}" -type f | head -1)"
           if [ -z "$BINARY" ]; then
-            echo "::error::Chrome binary not found in cloakium-bin/"
+            echo "::error::Binary '${{ matrix.binary_name }}' not found in cloakium-bin/"
             exit 1
           fi
           chmod +x "$BINARY"
@@ -54,71 +62,108 @@ jobs:
           mkdir -p reports
           pytest tests/test_stealth.py::TestWebDriverDetection \
             -v --tb=short \
-            --junitxml=reports/results.xml \
+            --junitxml=reports/results-${{ matrix.platform }}.xml \
             2>&1 | tee reports/test-output.txt || true
 
-      - name: Generate report
+      - name: Upload test results
         if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-${{ matrix.platform }}
+          path: reports/results-${{ matrix.platform }}.xml
+
+  report:
+    needs: test
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all test results
+        uses: actions/download-artifact@v4
+        with:
+          path: reports
+          merge-multiple: true
+
+      - name: Generate combined report
         run: |
           python3 - <<'PYEOF'
           import xml.etree.ElementTree as ET
-          import datetime, os
+          import datetime, glob, os
 
-          xml_path = "reports/results.xml"
-          md_path = "reports/stealth-test-latest.md"
-
-          if not os.path.exists(xml_path):
-              with open(md_path, "w") as f:
-                  f.write("# Stealth Test Report\n\nNo test results found.\n")
-              raise SystemExit(0)
-
-          tree = ET.parse(xml_path)
-          root = tree.getroot()
-          suite = root.find("testsuite") if root.tag != "testsuite" else root
-
-          tests = int(suite.get("tests", 0))
-          failures = int(suite.get("failures", 0))
-          errors = int(suite.get("errors", 0))
-          skipped = int(suite.get("skipped", 0))
-          passed = tests - failures - errors - skipped
           timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-
           lines = [
               "# Stealth Test Report",
               "",
               f"**Date:** {timestamp}",
-              f"**Result:** {passed}/{tests} passed",
               "",
-              "| Test | Status |",
-              "|------|--------|",
           ]
 
-          for tc in suite.iter("testcase"):
-              name = tc.get("name", "unknown")
-              failure = tc.find("failure")
-              error = tc.find("error")
-              skip = tc.find("skipped")
-              if failure is not None:
-                  status = "FAIL"
-              elif error is not None:
-                  status = "ERROR"
-              elif skip is not None:
-                  status = "SKIP"
-              else:
-                  status = "PASS"
-              lines.append(f"| `{name}` | {status} |")
+          xml_files = sorted(glob.glob("reports/results-*.xml"))
+          if not xml_files:
+              lines.append("No test results found.")
+              with open("reports/stealth-test-latest.md", "w") as f:
+                  f.write("\n".join(lines))
+              raise SystemExit(0)
 
+          grand_passed = grand_total = 0
+          grand_time = 0.0
+
+          for xml_path in xml_files:
+              platform = os.path.basename(xml_path).replace("results-", "").replace(".xml", "")
+              tree = ET.parse(xml_path)
+              root = tree.getroot()
+              suite = root.find("testsuite") if root.tag != "testsuite" else root
+
+              tests = int(suite.get("tests", 0))
+              failures = int(suite.get("failures", 0))
+              errors = int(suite.get("errors", 0))
+              skipped = int(suite.get("skipped", 0))
+              suite_time = float(suite.get("time", 0))
+              passed = tests - failures - errors - skipped
+
+              grand_passed += passed
+              grand_total += tests
+              grand_time += suite_time
+
+              lines.append(f"## {platform}")
+              lines.append("")
+              lines.append(f"**Result:** {passed}/{tests} passed in {suite_time:.1f}s")
+              lines.append("")
+              lines.append("| Test | Status | Time |")
+              lines.append("|------|--------|------|")
+
+              for tc in suite.iter("testcase"):
+                  name = tc.get("name", "unknown")
+                  tc_time = float(tc.get("time", 0))
+                  failure = tc.find("failure")
+                  error = tc.find("error")
+                  skip = tc.find("skipped")
+                  if failure is not None:
+                      status = "FAIL"
+                  elif error is not None:
+                      status = "ERROR"
+                  elif skip is not None:
+                      status = "SKIP"
+                  else:
+                      status = "PASS"
+                  lines.append(f"| `{name}` | {status} | {tc_time:.2f}s |")
+
+              lines.append("")
+
+          lines.append(f"**Total: {grand_passed}/{grand_total} passed across {len(xml_files)} platform(s) in {grand_time:.1f}s**")
           lines.append("")
-          with open(md_path, "w") as f:
+
+          with open("reports/stealth-test-latest.md", "w") as f:
               f.write("\n".join(lines))
-          print(f"Report written to {md_path}")
+          print(f"Report: {grand_passed}/{grand_total} passed in {grand_time:.1f}s")
           PYEOF
 
       - name: Commit report
-        if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase
           git add reports/stealth-test-latest.md
           if git diff --cached --quiet; then
             echo "No changes to commit"

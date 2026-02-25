@@ -35,6 +35,7 @@ jobs:
       - name: Install test dependencies
         run: |
           pip install pytest pytest-timeout playwright
+          playwright install chromium
           playwright install-deps chromium
 
       - name: Download Cloakium binary

@@ -4,8 +4,14 @@ Tests verify the patched Chromium binary passes common bot detection checks
 when driven by Playwright. Mirrors CloakBrowser's test suite.
 
 Usage:
-    STEALTH_BINARY=/path/to/out/Stealth/Chromium.app/Contents/MacOS/Chromium \
+    # Headless (default, uses local build)
     python -m pytest tests/test_stealth.py -v
+
+    # Headful — watch the browser
+    HEADFUL=1 python -m pytest tests/test_stealth.py -v
+
+    # Custom binary
+    STEALTH_BINARY=/path/to/chrome HEADFUL=1 python -m pytest tests/test_stealth.py -v
 """
 
 import os
@@ -16,6 +22,8 @@ BINARY = os.environ.get(
     "STEALTH_BINARY",
     os.path.expanduser("~/git/chromium/out/Stealth/Chromium.app/Contents/MacOS/Chromium"),
 )
+HEADFUL = os.environ.get("HEADFUL", "").lower() in ("1", "true", "yes")
+SLOW_MO = int(os.environ.get("SLOW_MO", "500" if HEADFUL else "0"))
 
 STEALTH_ARGS = [
     "--no-sandbox",
@@ -34,7 +42,8 @@ def stealth_page():
     pw = sync_playwright().start()
     browser = pw.chromium.launch(
         executable_path=BINARY,
-        headless=True,
+        headless=not HEADFUL,
+        slow_mo=SLOW_MO,
         args=STEALTH_ARGS,
         ignore_default_args=["--enable-automation"],
     )
@@ -105,6 +114,21 @@ class TestWebDriverDetection:
         stealth_page.goto("https://example.com")
         platform = stealth_page.evaluate("navigator.platform")
         assert platform == "Win32"
+
+    def test_worker_platform_matches_main(self, stealth_page):
+        """Web Worker navigator.platform must match main thread."""
+        stealth_page.goto("https://example.com")
+        worker_platform = stealth_page.evaluate("""
+            () => new Promise(resolve => {
+                const blob = new Blob(
+                    ['self.postMessage(navigator.platform)'],
+                    {type: 'application/javascript'}
+                );
+                const w = new Worker(URL.createObjectURL(blob));
+                w.onmessage = e => { w.terminate(); resolve(e.data); };
+            })
+        """)
+        assert worker_platform == "Win32", f"Worker platform '{worker_platform}' != 'Win32'"
 
 
 class TestBotDetectionSites:

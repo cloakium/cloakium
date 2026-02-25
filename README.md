@@ -79,7 +79,7 @@ with sync_playwright() as pw:
 | # | Patch | What it does |
 |---|-------|-------------|
 | 01 | `cli-switches` | Register `--fingerprint*` CLI flags in content switches |
-| 02 | `navigator-webdriver-platform` | `navigator.webdriver` returns `false`; platform override via flag |
+| 02 | `navigator-webdriver-platform` | `navigator.webdriver` returns `false`; platform override via flag (main thread + workers) |
 | 03 | `remove-headless-ua` | Strip "HeadlessChrome" from User-Agent string |
 | 04 | `remove-cdp-cdc-vars` | Remove `cdc_` CDP detection variables from `window` |
 | 05 | `hardware-concurrency-override` | `navigator.hardwareConcurrency` respects CLI flag |

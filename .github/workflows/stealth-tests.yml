@@ -53,9 +53,9 @@ jobs:
           fi
           chmod +x "$BINARY"
           if [ "$(uname -s)" = "Darwin" ]; then
+            # Python zipfile doesn't preserve Unix permissions; fix all at once
+            chmod -R +x ./cloakium-bin/
             xattr -cr ./cloakium-bin/
-            # Fix execute permissions on all Mach-O binaries (helpers, dylibs)
-            find ./cloakium-bin -type f | xargs file | grep Mach-O | cut -d: -f1 | xargs chmod +x
             APP_BUNDLE="$(find ./cloakium-bin -name '*.app' -type d | head -1)"
             if [ -n "$APP_BUNDLE" ]; then
               find "$APP_BUNDLE/Contents/Frameworks" \( -name "*.framework" -o -name "*.app" -o -name "*.dylib" \) -print0 \

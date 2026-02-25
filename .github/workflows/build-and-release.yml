@@ -41,7 +41,7 @@ jobs:
         include:
           - target: linux-amd64
             runner: [self-hosted, linux, x64]
-            asset: cloakium-linux-amd64.tar.zst
+            asset: blacksmith-8vcpu-ubuntu-2404
             target_os: linux
             target_cpu: x64
             cross: false

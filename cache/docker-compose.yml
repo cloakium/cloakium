@@ -1,0 +1,32 @@
+# Minio S3-compatible object storage for Cloakium build caches.
+#
+# Usage:
+#   1. Generate a secret key:
+#        export MINIO_SECRET_KEY=$(openssl rand -hex 32)
+#        echo "$MINIO_SECRET_KEY"   # save this for GitHub secrets
+#
+#   2. Start:
+#        docker compose up -d
+#
+#   3. Add these GitHub repo secrets (Settings → Secrets → Actions):
+#        CACHE_ENDPOINT    = http://<your-server>:9000
+#        CACHE_ACCESS_KEY  = cloakium-ci
+#        CACHE_SECRET_KEY  = <the key from step 1>
+#
+#   4. Create the bucket (one-time):
+#        docker compose exec minio mc alias set local http://localhost:9000 cloakium-ci "$MINIO_SECRET_KEY"
+#        docker compose exec minio mc mb local/cloakium-cache
+
+services:
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"   # S3 API
+      - "127.0.0.1:9001:9001"  # Web console (local only)
+    environment:
+      MINIO_ROOT_USER: cloakium-ci
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    volumes:
+      - /data/minio:/data
+    restart: unless-stopped

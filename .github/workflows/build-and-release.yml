@@ -40,7 +40,7 @@ jobs:
       matrix:
         include:
           - target: linux-amd64
-            runner: blacksmith-8vcpu-ubuntu-2404
+            runner: ubuntu-latest
             asset: cloakium-linux-amd64.tar.zst
             target_os: linux
             target_cpu: x64
@@ -65,35 +65,46 @@ jobs:
     env:
       CACHE_ROOT: ${{ matrix.cache_root }}
       WORK_ROOT: ${{ matrix.work_root }}
+      SCCACHE_BUCKET: cloakium-cache
+      SCCACHE_ENDPOINT: ${{ secrets.CACHE_ENDPOINT }}
+      SCCACHE_REGION: us-east-1
+      SCCACHE_S3_KEY_PREFIX: sccache
+      AWS_ACCESS_KEY_ID: ${{ secrets.CACHE_ACCESS_KEY }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.CACHE_SECRET_KEY }}
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Resolve paths
+      - name: Check if asset already exists
+        id: check-asset
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          # Expand ~ to actual home dir for macOS runners
-          CACHE_ROOT="${CACHE_ROOT/#\~/$HOME}"
-          WORK_ROOT="${WORK_ROOT/#\~/$HOME}"
-          echo "CACHE_ROOT=$CACHE_ROOT" >> "$GITHUB_ENV"
-          echo "WORK_ROOT=$WORK_ROOT" >> "$GITHUB_ENV"
-          echo "CHROMIUM_SRC=$WORK_ROOT/chromium/src" >> "$GITHUB_ENV"
-          mkdir -p "$CACHE_ROOT" "$WORK_ROOT"
-
-      - name: Ensure Metal toolchain (macOS)
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          # ANGLE Metal shaders require the Metal toolchain
-          if ! xcrun -f metal &>/dev/null; then
-            echo "Installing Metal toolchain..."
-            xcodebuild -downloadComponent MetalToolchain
+          set -euo pipefail
+          tag="${{ inputs.upstream_version }}"
+          asset="${{ matrix.asset }}"
+          assets="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' 2>/dev/null || true)"
+          if echo "$assets" | grep -qx "$asset"; then
+            echo "Asset $asset already exists on release $tag — skipping build"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
           else
-            echo "Metal toolchain already available"
+            echo "Asset $asset not found — proceeding with build"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Install build dependencies (Linux)
-        if: runner.os == 'Linux'
+      - name: Free disk space
+        if: steps.check-asset.outputs.skip == 'false' && runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /usr/local/share/boost /usr/share/swift /opt/hostedtoolcache
+          docker system prune -af 2>/dev/null || true
+          sudo apt-get clean
+          echo "Free space: $(df -h / | tail -1 | awk '{print $4}')"
+
+      - name: Install build dependencies
+        if: steps.check-asset.outputs.skip == 'false' && runner.os == 'Linux'
         shell: bash
         run: |
           sudo apt-get update
@@ -108,7 +119,82 @@ jobs:
             gperf libffi-dev libxkbcommon-dev \
             zip zstd
 
+      - name: Resolve paths
+        if: steps.check-asset.outputs.skip == 'false'
+        shell: bash
+        run: |
+          # Expand ~ to actual home dir for macOS runners
+          CACHE_ROOT="${CACHE_ROOT/#\~/$HOME}"
+          WORK_ROOT="${WORK_ROOT/#\~/$HOME}"
+          echo "CACHE_ROOT=$CACHE_ROOT" >> "$GITHUB_ENV"
+          echo "WORK_ROOT=$WORK_ROOT" >> "$GITHUB_ENV"
+          echo "CHROMIUM_SRC=$WORK_ROOT/chromium/src" >> "$GITHUB_ENV"
+          mkdir -p "$CACHE_ROOT" "$WORK_ROOT"
+
+      - name: Install cache tools
+        if: steps.check-asset.outputs.skip == 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Install mc (Minio client)
+          case "$(uname -s)-$(uname -m)" in
+            Linux-x86_64)  MC_URL="https://dl.min.io/client/mc/release/linux-amd64/mc" ;;
+            Darwin-arm64)  MC_URL="https://dl.min.io/client/mc/release/darwin-arm64/mc" ;;
+            *) echo "Unsupported: $(uname -s)-$(uname -m)"; exit 1 ;;
+          esac
+          curl -fsSL "$MC_URL" -o "$CACHE_ROOT/mc" && chmod +x "$CACHE_ROOT/mc"
+
+          # Install sccache
+          SCCACHE_VER="0.9.0"
+          case "$(uname -s)-$(uname -m)" in
+            Linux-x86_64)  SCCACHE_ARCH="x86_64-unknown-linux-musl" ;;
+            Darwin-arm64)  SCCACHE_ARCH="aarch64-apple-darwin" ;;
+          esac
+          curl -fsSL "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VER}/sccache-v${SCCACHE_VER}-${SCCACHE_ARCH}.tar.gz" \
+            | tar xz
+          mv "sccache-v${SCCACHE_VER}-${SCCACHE_ARCH}/sccache" "$CACHE_ROOT/sccache"
+          chmod +x "$CACHE_ROOT/sccache"
+          echo "$CACHE_ROOT" >> "$GITHUB_PATH"
+
+          # Configure mc alias (if cache endpoint is set)
+          if [ -n "${SCCACHE_ENDPOINT:-}" ]; then
+            "$CACHE_ROOT/mc" alias set cache "$SCCACHE_ENDPOINT" "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY"
+          fi
+
+      - name: Restore build cache
+        if: steps.check-asset.outputs.skip == 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${SCCACHE_ENDPOINT:-}" ]; then
+            echo "No cache endpoint configured — skipping"
+            exit 0
+          fi
+          CACHE_KEY="${{ matrix.target }}"
+          echo "Restoring cache: $CACHE_KEY..."
+          if "$CACHE_ROOT/mc" cat "cache/cloakium-cache/${CACHE_KEY}.tar.zst" 2>/dev/null \
+              | zstd -d -T0 \
+              | tar -xf - -C "$WORK_ROOT"; then
+            echo "Cache restored"
+            du -sh "$WORK_ROOT/chromium" 2>/dev/null || true
+          else
+            echo "No cache found — clean build"
+          fi
+
+      - name: Ensure Metal toolchain (macOS)
+        if: steps.check-asset.outputs.skip == 'false' && runner.os == 'macOS'
+        shell: bash
+        run: |
+          # ANGLE Metal shaders require the Metal toolchain
+          if ! xcrun -f metal &>/dev/null; then
+            echo "Installing Metal toolchain..."
+            xcodebuild -downloadComponent MetalToolchain
+          else
+            echo "Metal toolchain already available"
+          fi
+
       - name: Set up depot_tools
+        if: steps.check-asset.outputs.skip == 'false'
         shell: bash
         run: |
           set -euo pipefail
@@ -121,6 +207,7 @@ jobs:
           echo "$CACHE_ROOT/depot_tools" >> "$GITHUB_PATH"
 
       - name: Sync Chromium source
+        if: steps.check-asset.outputs.skip == 'false'
         shell: bash
         env:
           UPSTREAM_VERSION: ${{ inputs.upstream_version }}
@@ -157,13 +244,14 @@ jobs:
           echo "Sync complete. Source at: $WORK/src"
 
       - name: Install sysroot (cross-compile)
-        if: matrix.cross && matrix.target_os == 'linux'
+        if: steps.check-asset.outputs.skip == 'false' && matrix.cross && matrix.target_os == 'linux'
         shell: bash
         run: |
           cd "$CHROMIUM_SRC"
           python3 build/linux/sysroot_scripts/install-sysroot.py --arch=${{ matrix.target_cpu }}
 
       - name: Apply patches
+        if: steps.check-asset.outputs.skip == 'false'
         shell: bash
         run: |
           set -euo pipefail
@@ -248,6 +336,7 @@ jobs:
           echo "All patches applied."
 
       - name: Generate build config
+        if: steps.check-asset.outputs.skip == 'false'
         shell: bash
         env:
           TARGET_OS: ${{ matrix.target_os }}
@@ -291,6 +380,7 @@ jobs:
           gn gen "$BUILD_DIR"
 
       - name: Build
+        if: steps.check-asset.outputs.skip == 'false'
         shell: bash
         run: |
           set -euo pipefail
@@ -300,6 +390,7 @@ jobs:
           autoninja -C "$BUILD_DIR" chrome
 
       - name: Smoke test
+        if: steps.check-asset.outputs.skip == 'false'
         shell: bash
         env:
           TARGET_OS: ${{ matrix.target_os }}
@@ -331,6 +422,7 @@ jobs:
           esac
 
       - name: Package artifact
+        if: steps.check-asset.outputs.skip == 'false'
         shell: bash
         env:
           TARGET_OS: ${{ matrix.target_os }}
@@ -367,6 +459,7 @@ jobs:
           echo "Packaged: $DIST/$ASSET_NAME ($(du -h "$DIST/$ASSET_NAME" | cut -f1))"
 
       - name: Upload asset to GitHub Release
+        if: steps.check-asset.outputs.skip == 'false'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -377,6 +470,29 @@ jobs:
           gh release upload "$tag" "$file" \
             --repo "$GITHUB_REPOSITORY" \
             --clobber
+
+      - name: Save build cache
+        if: always() && steps.check-asset.outputs.skip == 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${SCCACHE_ENDPOINT:-}" ]; then
+            echo "No cache endpoint configured — skipping"
+            exit 0
+          fi
+          if [ ! -d "$WORK_ROOT/chromium/src" ]; then
+            echo "No source tree — skipping"
+            exit 0
+          fi
+          CACHE_KEY="${{ matrix.target }}"
+          echo "Saving cache: $CACHE_KEY..."
+          tar -cf - -C "$WORK_ROOT" chromium \
+            | zstd -T0 -3 \
+            | "$CACHE_ROOT/mc" pipe "cache/cloakium-cache/${CACHE_KEY}.tar.zst.tmp"
+          "$CACHE_ROOT/mc" mv "cache/cloakium-cache/${CACHE_KEY}.tar.zst.tmp" \
+            "cache/cloakium-cache/${CACHE_KEY}.tar.zst"
+          echo "Cache saved"
+          sccache --show-stats 2>/dev/null || true
 
   verify:
     needs: build

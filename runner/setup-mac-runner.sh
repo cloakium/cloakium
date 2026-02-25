@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 #
-# Setup a local Mac as a self-hosted GitHub Actions runner for Stealthium.
+# Setup a local Mac as a self-hosted GitHub Actions runner for Cloakium.
 #
 # Prerequisites:
 #   - macOS with Xcode installed
@@ -13,15 +13,15 @@ set -euo pipefail
 #
 # This installs the runner as a launchd service that starts on login.
 
-REPO="dstockton/stealthium"
+REPO="cloakium/cloakium"
 RUNNER_VERSION="2.322.0"
 RUNNER_DIR="$HOME/.github-runner"
-RUNNER_NAME="stealthium-mac-$(hostname -s)"
+RUNNER_NAME="cloakium-mac-$(hostname -s)"
 RUNNER_LABELS="self-hosted,macOS,ARM64"
 WORK_DIR="$HOME/.github-runner-work"
 CACHE_DIR="$HOME/.github-runner-cache"
 
-echo "=== Stealthium macOS Runner Setup ==="
+echo "=== Cloakium macOS Runner Setup ==="
 echo "Runner dir: $RUNNER_DIR"
 echo "Work dir:   $WORK_DIR"
 echo "Cache dir:  $CACHE_DIR"

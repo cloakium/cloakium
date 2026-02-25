@@ -31,7 +31,7 @@ jobs:
           gh release create "$tag" \
             --repo "$GITHUB_REPOSITORY" \
             --title "$tag" \
-            --notes "Stealthium build based on upstream Chrome Stable $tag (CfT last-known-good)."
+            --notes "Cloakium build based on upstream Chrome Stable $tag (CfT last-known-good)."
 
   build:
     needs: ensure-release
@@ -41,7 +41,7 @@ jobs:
         include:
           - target: linux-amd64
             runner: [self-hosted, linux, x64]
-            asset: stealthium-linux-amd64.tar.zst
+            asset: cloakium-linux-amd64.tar.zst
             target_os: linux
             target_cpu: x64
             cross: false
@@ -51,7 +51,7 @@ jobs:
 
           - target: darwin-arm64
             runner: [self-hosted, macOS, ARM64]
-            asset: stealthium-darwin-arm64.zip
+            asset: cloakium-darwin-arm64.zip
             target_os: mac
             target_cpu: arm64
             cross: false
@@ -239,7 +239,7 @@ jobs:
         run: |
           set -euo pipefail
           cd "$CHROMIUM_SRC"
-          BUILD_DIR="out/Stealthium-${{ matrix.target }}"
+          BUILD_DIR="out/Cloakium-${{ matrix.target }}"
           mkdir -p "$BUILD_DIR"
 
           # Base args common to all targets
@@ -279,7 +279,7 @@ jobs:
         run: |
           set -euo pipefail
           cd "$CHROMIUM_SRC"
-          BUILD_DIR="out/Stealthium-${{ matrix.target }}"
+          BUILD_DIR="out/Cloakium-${{ matrix.target }}"
 
           autoninja -C "$BUILD_DIR" chrome
 
@@ -290,7 +290,7 @@ jobs:
         run: |
           set -euo pipefail
           cd "$CHROMIUM_SRC"
-          BUILD_DIR="out/Stealthium-${{ matrix.target }}"
+          BUILD_DIR="out/Cloakium-${{ matrix.target }}"
 
           # Only run smoke test for native builds (not cross-compiled)
           if [ "${{ matrix.cross }}" = "true" ]; then
@@ -322,7 +322,7 @@ jobs:
         run: |
           set -euo pipefail
           cd "$CHROMIUM_SRC"
-          BUILD_DIR="out/Stealthium-${{ matrix.target }}"
+          BUILD_DIR="out/Cloakium-${{ matrix.target }}"
           DIST="$GITHUB_WORKSPACE/dist"
           mkdir -p "$DIST"
 
@@ -377,8 +377,8 @@ jobs:
           assets="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name')"
 
           required=(
-            "stealthium-linux-amd64.tar.zst"
-            "stealthium-darwin-arm64.zip"
+            "cloakium-linux-amd64.tar.zst"
+            "cloakium-darwin-arm64.zip"
           )
 
           missing=0

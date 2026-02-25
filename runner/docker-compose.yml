@@ -1,10 +1,10 @@
-# Docker Compose for Stealthium self-hosted GitHub Actions runners
+# Docker Compose for Cloakium self-hosted GitHub Actions runners
 #
 # Usage:
 #   1. Get a runner registration token from:
-#      https://github.com/dstockton/stealthium/settings/actions/runners/new
+#      https://github.com/cloakium/cloakium/settings/actions/runners/new
 #      Or via API:
-#      gh api repos/dstockton/stealthium/actions/runners/registration-token -q .token
+#      gh api repos/cloakium/cloakium/actions/runners/registration-token -q .token
 #
 #   2. Set environment:
 #      export RUNNER_TOKEN=<token>
@@ -22,9 +22,9 @@ services:
       context: .
       dockerfile: Dockerfile
     environment:
-      GITHUB_REPO: dstockton/stealthium
+      GITHUB_REPO: cloakium/cloakium
       RUNNER_TOKEN: ${RUNNER_TOKEN}
-      RUNNER_NAME: stealthium-linux-01
+      RUNNER_NAME: cloakium-linux-01
       RUNNER_LABELS: self-hosted,linux,x64
       SCCACHE_DIR: /cache/sccache
       SCCACHE_CACHE_SIZE: 50G

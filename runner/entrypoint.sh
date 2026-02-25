@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Required env vars:
-#   GITHUB_REPO   — e.g. "dstockton/stealthium"
+#   GITHUB_REPO   — e.g. "cloakium/cloakium"
 #   RUNNER_TOKEN  — registration token from GitHub
 #   RUNNER_NAME   — unique name for this runner (default: hostname)
 #   RUNNER_LABELS — comma-separated labels (default: "self-hosted,linux,x64")

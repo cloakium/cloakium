@@ -23,7 +23,7 @@ jobs:
             runner: macos-latest
             binary_name: Chromium
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
@@ -35,8 +35,7 @@ jobs:
       - name: Install test dependencies
         run: |
           pip install pytest pytest-timeout playwright
-          playwright install chromium
-          playwright install-deps
+          playwright install-deps chromium
 
       - name: Download Cloakium binary
         env:

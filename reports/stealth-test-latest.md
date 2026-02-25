@@ -1,14 +1,14 @@
 # Stealth Test Report
 
-**Date:** 2026-02-25 15:26 UTC
+**Date:** 2026-02-25 15:44 UTC
 
 ## darwin-arm64
 
-**Result:** 0/8 passed in 4.9s
+**Result:** 0/8 passed in 5.3s
 
 | Test | Status | Time |
 |------|--------|------|
-| `test_navigator_webdriver_false` | ERROR | 4.51s |
+| `test_navigator_webdriver_false` | ERROR | 5.02s |
 | `test_no_headless_chrome_ua` | ERROR | 0.00s |
 | `test_window_chrome_exists` | ERROR | 0.00s |
 | `test_plugins_present` | ERROR | 0.00s |
@@ -17,19 +17,4 @@
 | `test_hardware_concurrency_override` | ERROR | 0.00s |
 | `test_platform_override` | ERROR | 0.00s |
 
-## linux-amd64
-
-**Result:** 8/8 passed in 8.1s
-
-| Test | Status | Time |
-|------|--------|------|
-| `test_navigator_webdriver_false` | PASS | 2.17s |
-| `test_no_headless_chrome_ua` | PASS | 0.78s |
-| `test_window_chrome_exists` | PASS | 0.76s |
-| `test_plugins_present` | PASS | 0.78s |
-| `test_languages_present` | PASS | 0.75s |
-| `test_cdp_not_detected` | PASS | 0.78s |
-| `test_hardware_concurrency_override` | PASS | 0.85s |
-| `test_platform_override` | PASS | 0.82s |
-
-**Total: 8/16 passed across 2 platform(s) in 13.0s**
+**Total: 0/8 passed across 1 platform(s) in 5.3s**

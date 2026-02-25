@@ -212,7 +212,6 @@ jobs:
               10-*) grep -q 'window.chrome' chrome/renderer/chrome_content_renderer_client.cc ;;
               11-*) grep -q 'Stealth: always report PDF' third_party/blink/renderer/modules/plugins/dom_plugin_array.cc ;;
               12-*) grep -q 'ShouldSuppressAutomationInfoBar' chrome/browser/ui/startup/automation_infobar_delegate.cc ;;
-              13-*) grep -q 'AutomationControlled.*status.*test' third_party/blink/renderer/platform/runtime_enabled_features.json5 ;;
               14-*) grep -q 'fingerprint' content/browser/renderer_host/render_process_host_impl.cc ;;
               *) return 1 ;;
             esac

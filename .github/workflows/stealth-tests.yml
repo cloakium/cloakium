@@ -53,11 +53,13 @@ jobs:
           fi
           chmod +x "$BINARY"
           if [ "$(uname -s)" = "Darwin" ]; then
-            # Strip quarantine and ad-hoc codesign to satisfy Gatekeeper
             xattr -cr ./cloakium-bin/
             APP_BUNDLE="$(find ./cloakium-bin -name '*.app' -type d | head -1)"
             if [ -n "$APP_BUNDLE" ]; then
-              codesign --sign - --force --deep "$APP_BUNDLE"
+              # Sign frameworks/helpers first, then the top-level app
+              find "$APP_BUNDLE/Contents/Frameworks" \( -name "*.framework" -o -name "*.app" -o -name "*.dylib" \) -print0 \
+                | xargs -0 -I{} codesign --sign - --force "{}" 2>&1 || true
+              codesign --sign - --force "$APP_BUNDLE" 2>&1 || true
               echo "Codesigned: $APP_BUNDLE"
             fi
           fi

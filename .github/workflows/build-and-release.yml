@@ -48,7 +48,6 @@ jobs:
             cache_root: /tmp/cloakium-cache
             work_root: /tmp/cloakium-work
 
-
           - target: darwin-arm64
             runner: [self-hosted, macOS, ARM64]
             asset: cloakium-darwin-arm64.zip
@@ -58,19 +57,12 @@ jobs:
             cache_root: ~/.github-runner-cache
             work_root: ~/.github-runner-work
 
-
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 360
 
     env:
       CACHE_ROOT: ${{ matrix.cache_root }}
       WORK_ROOT: ${{ matrix.work_root }}
-      SCCACHE_BUCKET: cloakium-cache
-      SCCACHE_ENDPOINT: ${{ secrets.CACHE_ENDPOINT }}
-      SCCACHE_REGION: us-east-1
-      SCCACHE_S3_KEY_PREFIX: sccache
-      AWS_ACCESS_KEY_ID: ${{ secrets.CACHE_ACCESS_KEY }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.CACHE_SECRET_KEY }}
 
     steps:
       - uses: actions/checkout@v4
@@ -128,7 +120,7 @@ jobs:
             libgbm-dev libpango1.0-dev libasound2-dev \
             libdrm-dev libxshmfence-dev \
             gperf libffi-dev libxkbcommon-dev \
-            zip zstd pv
+            zip zstd
 
       - name: Resolve paths
         if: steps.check-asset.outputs.skip == 'false'
@@ -141,56 +133,6 @@ jobs:
           echo "WORK_ROOT=$WORK_ROOT" >> "$GITHUB_ENV"
           echo "CHROMIUM_SRC=$WORK_ROOT/chromium/src" >> "$GITHUB_ENV"
           mkdir -p "$CACHE_ROOT" "$WORK_ROOT"
-
-      - name: Install cache tools
-        if: steps.check-asset.outputs.skip == 'false'
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Install mc (Minio client)
-          case "$(uname -s)-$(uname -m)" in
-            Linux-x86_64)  MC_URL="https://dl.min.io/client/mc/release/linux-amd64/mc" ;;
-            Darwin-arm64)  MC_URL="https://dl.min.io/client/mc/release/darwin-arm64/mc" ;;
-            *) echo "Unsupported: $(uname -s)-$(uname -m)"; exit 1 ;;
-          esac
-          curl -fsSL "$MC_URL" -o "$CACHE_ROOT/mc" && chmod +x "$CACHE_ROOT/mc"
-
-          # Install sccache
-          SCCACHE_VER="0.9.0"
-          case "$(uname -s)-$(uname -m)" in
-            Linux-x86_64)  SCCACHE_ARCH="x86_64-unknown-linux-musl" ;;
-            Darwin-arm64)  SCCACHE_ARCH="aarch64-apple-darwin" ;;
-          esac
-          curl -fsSL "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VER}/sccache-v${SCCACHE_VER}-${SCCACHE_ARCH}.tar.gz" \
-            | tar xz
-          mv "sccache-v${SCCACHE_VER}-${SCCACHE_ARCH}/sccache" "$CACHE_ROOT/sccache"
-          chmod +x "$CACHE_ROOT/sccache"
-          echo "$CACHE_ROOT" >> "$GITHUB_PATH"
-
-          # Configure mc alias (if cache endpoint is set)
-          if [ -n "${SCCACHE_ENDPOINT:-}" ]; then
-            "$CACHE_ROOT/mc" alias set cache "$SCCACHE_ENDPOINT" "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY"
-          fi
-
-      - name: Restore build cache
-        if: steps.check-asset.outputs.skip == 'false'
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ -z "${SCCACHE_ENDPOINT:-}" ]; then
-            echo "No cache endpoint configured — skipping"
-            exit 0
-          fi
-          CACHE_KEY="${{ matrix.target }}"
-          echo "Restoring cache: $CACHE_KEY..."
-          if "$CACHE_ROOT/mc" cat "cache/cloakium-cache/${CACHE_KEY}.tar.zst" 2>/dev/null \
-              | zstd -d -T0 \
-              | tar -xf - -C "$WORK_ROOT"; then
-            echo "Cache restored"
-            du -sh "$WORK_ROOT/chromium" 2>/dev/null || true
-          else
-            echo "No cache found — clean build"
-          fi
 
       - name: Ensure Metal toolchain (macOS)
         if: steps.check-asset.outputs.skip == 'false' && runner.os == 'macOS'
@@ -305,7 +247,7 @@ jobs:
           check_applied() {
             case "$1" in
               01-*) grep -q 'kFingerprint\[\]' content/public/common/content_switches.cc ;;
-              02-*) grep -q 'fingerprint-platform' third_party/blink/renderer/core/frame/navigator.cc ;;
+              02-*) grep -q 'fingerprint-platform' third_party/blink/renderer/core/execution_context/navigator_base.cc ;;
               03-*) grep -q 'HeadlessChrome' components/embedder_support/user_agent_utils.cc && return 1; return 0 ;;
               04-*) grep -q 'cdc_adoQpoasnfa76pfcZLmcfl' chrome/test/chromedriver/chrome/devtools_client_impl.cc && return 1; return 0 ;;
               05-*) grep -q 'fingerprint-hardware-concurrency' third_party/blink/renderer/core/frame/navigator_concurrent_hardware.cc ;;
@@ -378,11 +320,6 @@ jobs:
               echo "mac_sdk_path = \"$SDK_PATH\"" >> "$BUILD_DIR/args.gn"
             fi
             echo 'angle_enable_metal = false' >> "$BUILD_DIR/args.gn"
-          fi
-
-          # sccache if available
-          if command -v sccache &>/dev/null; then
-            echo 'cc_wrapper = "sccache"' >> "$BUILD_DIR/args.gn"
           fi
 
           echo "=== args.gn ==="
@@ -481,46 +418,6 @@ jobs:
           gh release upload "$tag" "$file" \
             --repo "$GITHUB_REPOSITORY" \
             --clobber
-
-      - name: Save build cache
-        if: always() && steps.check-asset.outputs.skip == 'false'
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ -z "${SCCACHE_ENDPOINT:-}" ]; then
-            echo "No cache endpoint configured — skipping"
-            exit 0
-          fi
-          if [ ! -d "$WORK_ROOT/chromium/src" ]; then
-            echo "No source tree — skipping"
-            exit 0
-          fi
-          CACHE_KEY="${{ matrix.target }}"
-          echo "Saving cache: $CACHE_KEY..."
-
-          # Measure size for progress reporting
-          if du -sb "$WORK_ROOT/chromium" >/dev/null 2>&1; then
-            BYTES=$(du -sb "$WORK_ROOT/chromium" | cut -f1)
-          else
-            BYTES=$(( $(du -sk "$WORK_ROOT/chromium" | cut -f1) * 1024 ))
-          fi
-          echo "Cache size: $(du -sh "$WORK_ROOT/chromium" | cut -f1) ($BYTES bytes)"
-
-          # Use pv for progress if available, otherwise cat
-          if command -v pv &>/dev/null; then
-            PIPE="pv -s $BYTES"
-          else
-            PIPE="cat"
-          fi
-
-          tar -cf - -C "$WORK_ROOT" chromium \
-            | $PIPE \
-            | zstd -T0 -1 \
-            | "$CACHE_ROOT/mc" pipe "cache/cloakium-cache/${CACHE_KEY}.tar.zst.tmp"
-          "$CACHE_ROOT/mc" mv "cache/cloakium-cache/${CACHE_KEY}.tar.zst.tmp" \
-            "cache/cloakium-cache/${CACHE_KEY}.tar.zst"
-          echo "Cache saved"
-          sccache --show-stats 2>/dev/null || true
 
   verify:
     needs: build

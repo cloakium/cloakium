@@ -25,8 +25,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN curl -fsSL https://dl.min.io/client/mc/release/linux-amd64/mc -o /usr/local/bin/mc \
     && chmod +x /usr/local/bin/mc
 
-# Create runner user
-RUN useradd -m -s /bin/bash runner && \
+# Create runner user (force UID 1000 — ubuntu:24.04 has a default 'ubuntu' user at 1000)
+RUN userdel -r ubuntu 2>/dev/null || true && \
+    useradd -m -s /bin/bash -u 1000 runner && \
     echo "runner ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 # Install GitHub Actions runner

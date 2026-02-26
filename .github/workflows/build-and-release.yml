@@ -40,14 +40,14 @@ jobs:
       matrix:
         include:
           - target: linux-amd64
-            runner: blacksmith-16vcpu-ubuntu-2404
+            runner: [self-hosted, linux, x64]
             asset: cloakium-linux-amd64.tar.zst
             target_os: linux
             target_cpu: x64
             cross: false
-            ephemeral: true
-            cache_root: /tmp/cloakium-cache
-            work_root: /tmp/cloakium-work
+            ephemeral: false
+            cache_root: /cache
+            work_root: /work
 
           - target: darwin-arm64
             runner: [self-hosted, macOS, ARM64]

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       upstream_version:
-        description: "Upstream Stable version (e.g. 136.0.7103.113)"
+        description: "Upstream Stable version (e.g. 146.0.7680.31)"
         required: true
         type: string
 
@@ -45,6 +45,7 @@ jobs:
             target_os: linux
             target_cpu: x64
             cross: false
+            ephemeral: true
             cache_root: /tmp/cloakium-cache
             work_root: /tmp/cloakium-work
 
@@ -54,6 +55,7 @@ jobs:
             target_os: mac
             target_cpu: arm64
             cross: false
+            ephemeral: false
             cache_root: ~/.github-runner-cache
             work_root: ~/.github-runner-work
 
@@ -96,8 +98,10 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # --- Ephemeral-only steps (Blacksmith / cloud runners) ---
+
       - name: Free disk space
-        if: steps.check-asset.outputs.skip == 'false' && runner.os == 'Linux'
+        if: steps.check-asset.outputs.skip == 'false' && matrix.ephemeral && runner.os == 'Linux'
         shell: bash
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
@@ -107,7 +111,7 @@ jobs:
           echo "Free space: $(df -h / | tail -1 | awk '{print $4}')"
 
       - name: Install build dependencies
-        if: steps.check-asset.outputs.skip == 'false' && runner.os == 'Linux'
+        if: steps.check-asset.outputs.skip == 'false' && matrix.ephemeral && runner.os == 'Linux'
         shell: bash
         run: |
           sudo apt-get update
@@ -120,10 +124,10 @@ jobs:
             libgbm-dev libpango1.0-dev libasound2-dev \
             libdrm-dev libxshmfence-dev \
             gperf libffi-dev libxkbcommon-dev \
-            zip zstd
+            zip zstd pv
 
       - name: Verify MinIO cache connectivity
-        if: steps.check-asset.outputs.skip == 'false' && runner.os == 'Linux'
+        if: steps.check-asset.outputs.skip == 'false' && matrix.ephemeral
         env:
           CACHE_ENDPOINT: ${{ secrets.CACHE_ENDPOINT }}
           CACHE_ACCESS_KEY: ${{ secrets.CACHE_ACCESS_KEY }}
@@ -158,6 +162,8 @@ jobs:
 
           echo "MinIO connectivity verified."
           echo "CACHE_OK=true" >> "$GITHUB_ENV"
+
+      # --- Common steps ---
 
       - name: Resolve paths
         if: steps.check-asset.outputs.skip == 'false'
@@ -232,6 +238,60 @@ jobs:
               gclient sync --shallow --no-history -D
             }
           echo "Sync complete. Source at: $WORK/src"
+
+      # --- Self-hosted only: seed build output from MinIO (first run) ---
+
+      - name: Seed build output from MinIO
+        if: steps.check-asset.outputs.skip == 'false' && !matrix.ephemeral && matrix.target_os == 'linux'
+        continue-on-error: true
+        shell: bash
+        env:
+          CACHE_ENDPOINT: ${{ secrets.CACHE_ENDPOINT }}
+          CACHE_ACCESS_KEY: ${{ secrets.CACHE_ACCESS_KEY }}
+          CACHE_SECRET_KEY: ${{ secrets.CACHE_SECRET_KEY }}
+        run: |
+          set -euo pipefail
+          BUILD_DIR="$CHROMIUM_SRC/out/Cloakium-${{ matrix.target }}"
+
+          # Skip if build output already exists (subsequent runs)
+          if [ -d "$BUILD_DIR" ] && [ -f "$BUILD_DIR/build.ninja" ]; then
+            echo "Build output already exists at $BUILD_DIR — skipping seed"
+            exit 0
+          fi
+
+          # Need MinIO credentials to pull
+          if [ -z "${CACHE_ENDPOINT:-}" ]; then
+            echo "No CACHE_ENDPOINT — full build will be required"
+            exit 0
+          fi
+
+          CACHE_KEY="build-cache/${{ matrix.target }}/${{ inputs.upstream_version }}"
+          echo "Seeding build output from MinIO: $CACHE_KEY"
+
+          # Configure mc if not already configured
+          if ! mc alias ls cache &>/dev/null; then
+            mc alias set cache "$CACHE_ENDPOINT" "$CACHE_ACCESS_KEY" "$CACHE_SECRET_KEY"
+          fi
+
+          # Check if cache exists
+          if ! mc stat "cache/cloakium-cache/$CACHE_KEY/build-output.tar.zst" &>/dev/null; then
+            echo "No cached build output found at $CACHE_KEY — full build will be required"
+            exit 0
+          fi
+
+          echo "Downloading and extracting build output..."
+          mc cat "cache/cloakium-cache/$CACHE_KEY/build-output.tar.zst" \
+            | zstd -d -T0 \
+            | tar -xf - -C "$CHROMIUM_SRC"
+
+          if [ -d "$BUILD_DIR" ]; then
+            echo "Seed complete. Build output at: $BUILD_DIR"
+            ls -la "$BUILD_DIR/" | head -20
+          else
+            echo "Extraction completed but $BUILD_DIR not found — full build will be required"
+          fi
+
+      # --- Common steps (continued) ---
 
       - name: Install sysroot (cross-compile)
         if: steps.check-asset.outputs.skip == 'false' && matrix.cross && matrix.target_os == 'linux'
@@ -375,8 +435,10 @@ jobs:
 
           autoninja -C "$BUILD_DIR" chrome
 
+      # --- Ephemeral-only: upload build cache to MinIO ---
+
       - name: Upload build cache to MinIO
-        if: steps.check-asset.outputs.skip == 'false' && env.CACHE_OK == 'true'
+        if: steps.check-asset.outputs.skip == 'false' && matrix.ephemeral && env.CACHE_OK == 'true'
         continue-on-error: true
         shell: bash
         env:
@@ -408,6 +470,8 @@ jobs:
 
           # List what we uploaded
           mc ls "cache/cloakium-cache/$CACHE_KEY/"
+
+      # --- Common steps (continued) ---
 
       - name: Smoke test
         if: steps.check-asset.outputs.skip == 'false'

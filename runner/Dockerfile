@@ -1,4 +1,4 @@
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 ARG RUNNER_VERSION=2.322.0
 ARG TARGETARCH=x64
@@ -8,7 +8,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Install dependencies for GitHub Actions runner + Chromium build
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl ca-certificates git jq sudo lsb-release gnupg \
-    # Chromium build deps (subset — full list from install-build-deps.sh)
+    # Chromium build deps
     build-essential clang lld llvm \
     python3 python3-pip python3-setuptools \
     pkg-config libglib2.0-dev libgtk-3-dev libnss3-dev \
@@ -17,18 +17,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgbm-dev libpango1.0-dev libasound2-dev \
     libdrm-dev libxshmfence-dev \
     gperf libffi-dev libxkbcommon-dev \
-    # Cross-compilation for ARM64
-    gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
-    crossbuild-essential-arm64 \
     # Packaging
-    zip zstd \
-    # sccache for build caching
+    zip zstd pv \
     && rm -rf /var/lib/apt/lists/*
 
-# Install sccache
-RUN curl -fsSL "https://github.com/mozilla/sccache/releases/download/v0.9.1/sccache-v0.9.1-x86_64-unknown-linux-musl.tar.gz" \
-    | tar -xzf - -C /usr/local/bin --strip-components=1 sccache-v0.9.1-x86_64-unknown-linux-musl/sccache \
-    && chmod +x /usr/local/bin/sccache
+# Install MinIO client
+RUN curl -fsSL https://dl.min.io/client/mc/release/linux-amd64/mc -o /usr/local/bin/mc \
+    && chmod +x /usr/local/bin/mc
 
 # Create runner user
 RUN useradd -m -s /bin/bash runner && \

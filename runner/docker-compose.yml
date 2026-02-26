@@ -1,20 +1,18 @@
-# Docker Compose for Cloakium self-hosted GitHub Actions runners
+# Docker Compose for Cloakium self-hosted GitHub Actions runner (Linux)
 #
 # Usage:
-#   1. Get a runner registration token from:
-#      https://github.com/cloakium/cloakium/settings/actions/runners/new
-#      Or via API:
+#   1. Get a runner registration token:
 #      gh api repos/cloakium/cloakium/actions/runners/registration-token -q .token
 #
-#   2. Set environment:
-#      export RUNNER_TOKEN=<token>
+#   2. Create .env:
+#      RUNNER_TOKEN=<token>
 #
 #   3. Start:
 #      docker compose up -d --build
 #
-# The runner uses persistent volumes for:
-#   - /cache  — depot_tools, sccache cache
-#   - /work   — Chromium source + build output (reused across builds)
+# Persistent bind mounts on the host:
+#   /data/github-runner/cache → /cache  (depot_tools)
+#   /data/github-runner/work  → /work   (Chromium source + build output)
 
 services:
   runner:
@@ -26,31 +24,13 @@ services:
       RUNNER_TOKEN: ${RUNNER_TOKEN}
       RUNNER_NAME: cloakium-linux-01
       RUNNER_LABELS: self-hosted,linux,x64
-      SCCACHE_DIR: /cache/sccache
-      SCCACHE_CACHE_SIZE: 50G
+      CACHE_ROOT: /cache
+      WORK_ROOT: /work
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-}
     volumes:
-      # Persistent storage for build caches and source
-      - runner-cache:/cache
-      - runner-work:/work
+      - /data/github-runner/cache:/cache
+      - /data/github-runner/work:/work
+    network_mode: host
     restart: unless-stopped
-    # Chromium builds are resource-hungry
-    deploy:
-      resources:
-        limits:
-          memory: 64G
-        reservations:
-          memory: 32G
-
-volumes:
-  runner-cache:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /data/github-runners/cache
-  runner-work:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /data/github-runners/work

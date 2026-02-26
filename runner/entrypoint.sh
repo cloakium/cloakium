@@ -18,6 +18,9 @@ RUNNER_WORKDIR="${RUNNER_WORKDIR:-/work/_runner}"
 
 mkdir -p "$RUNNER_WORKDIR"
 
+# Trust all git directories (persistent volumes may change ownership between rebuilds)
+git config --global --add safe.directory '*'
+
 # Configure mc alias for MinIO if credentials provided
 if [ -n "${MINIO_ENDPOINT:-}" ] && [ -n "${MINIO_ACCESS_KEY:-}" ] && [ -n "${MINIO_SECRET_KEY:-}" ]; then
   echo "Configuring MinIO client..."

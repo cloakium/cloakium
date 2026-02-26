@@ -232,10 +232,16 @@ jobs:
           cd "$WORK"
           gclient sync --shallow --no-history -D \
             || {
-              echo "Sync failed — nuking src/ and retrying from scratch..."
-              rm -rf "$WORK/src"
-              write_gclient
-              gclient sync --shallow --no-history -D
+              if [ "${{ matrix.ephemeral }}" = "true" ]; then
+                echo "Sync failed — nuking src/ and retrying from scratch..."
+                rm -rf "$WORK/src"
+                write_gclient
+                gclient sync --shallow --no-history -D
+              else
+                echo "Sync failed on persistent runner — NOT nuking src/ (would destroy build cache)"
+                echo "Check git safe.directory settings and ownership of $WORK/src"
+                exit 1
+              fi
             }
           echo "Sync complete. Source at: $WORK/src"
 

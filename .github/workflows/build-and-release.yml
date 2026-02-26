@@ -122,6 +122,43 @@ jobs:
             gperf libffi-dev libxkbcommon-dev \
             zip zstd
 
+      - name: Verify MinIO cache connectivity
+        if: steps.check-asset.outputs.skip == 'false' && runner.os == 'Linux'
+        env:
+          CACHE_ENDPOINT: ${{ secrets.CACHE_ENDPOINT }}
+          CACHE_ACCESS_KEY: ${{ secrets.CACHE_ACCESS_KEY }}
+          CACHE_SECRET_KEY: ${{ secrets.CACHE_SECRET_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${CACHE_ENDPOINT:-}" ]; then
+            echo "::warning::CACHE_ENDPOINT not set — skipping cache upload later"
+            echo "CACHE_OK=false" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          # Install mc (MinIO client)
+          sudo curl -fsSL https://dl.min.io/client/mc/release/linux-amd64/mc -o /usr/local/bin/mc
+          sudo chmod +x /usr/local/bin/mc
+          mc alias set cache "$CACHE_ENDPOINT" "$CACHE_ACCESS_KEY" "$CACHE_SECRET_KEY"
+
+          # Ensure bucket exists
+          mc mb --ignore-existing cache/cloakium-cache
+
+          # Round-trip test: write, read, delete
+          echo "connectivity-check-$(date +%s)" > /tmp/cache-test.txt
+          mc cp /tmp/cache-test.txt cache/cloakium-cache/_test_probe
+          mc cat cache/cloakium-cache/_test_probe > /tmp/cache-verify.txt
+          if ! diff -q /tmp/cache-test.txt /tmp/cache-verify.txt; then
+            echo "::error::MinIO round-trip failed — data mismatch"
+            exit 1
+          fi
+          mc rm cache/cloakium-cache/_test_probe
+          rm -f /tmp/cache-test.txt /tmp/cache-verify.txt
+
+          echo "MinIO connectivity verified."
+          echo "CACHE_OK=true" >> "$GITHUB_ENV"
+
       - name: Resolve paths
         if: steps.check-asset.outputs.skip == 'false'
         shell: bash
@@ -259,6 +296,7 @@ jobs:
               11-*) grep -q 'Stealth: always report PDF' third_party/blink/renderer/modules/plugins/dom_plugin_array.cc ;;
               12-*) grep -q 'ShouldSuppressAutomationInfoBar' chrome/browser/ui/startup/automation_infobar_delegate.cc ;;
               14-*) grep -q 'fingerprint' content/browser/renderer_host/render_process_host_impl.cc ;;
+              24-*) grep -q 'doesAttributeHaveObservableSideEffectOnGet' v8/src/inspector/value-mirror.cc && grep -q 'IsNativeError' v8/src/inspector/value-mirror.cc ;;
               *) return 1 ;;
             esac
           }
@@ -336,6 +374,40 @@ jobs:
           BUILD_DIR="out/Cloakium-${{ matrix.target }}"
 
           autoninja -C "$BUILD_DIR" chrome
+
+      - name: Upload build cache to MinIO
+        if: steps.check-asset.outputs.skip == 'false' && env.CACHE_OK == 'true'
+        continue-on-error: true
+        shell: bash
+        env:
+          CACHE_ENDPOINT: ${{ secrets.CACHE_ENDPOINT }}
+          CACHE_ACCESS_KEY: ${{ secrets.CACHE_ACCESS_KEY }}
+          CACHE_SECRET_KEY: ${{ secrets.CACHE_SECRET_KEY }}
+        run: |
+          set -euo pipefail
+          cd "$CHROMIUM_SRC"
+          BUILD_DIR="out/Cloakium-${{ matrix.target }}"
+          CACHE_KEY="build-cache/${{ matrix.target }}/${{ inputs.upstream_version }}"
+
+          # Reconfigure mc (clean runner step)
+          mc alias set cache "$CACHE_ENDPOINT" "$CACHE_ACCESS_KEY" "$CACHE_SECRET_KEY"
+
+          echo "Uploading build cache: $BUILD_DIR → $CACHE_KEY"
+          echo "Build dir size: $(du -sh "$BUILD_DIR" | cut -f1)"
+
+          # Stream tar+zstd directly to MinIO (no temp file needed)
+          tar -C "$CHROMIUM_SRC" -cf - "$BUILD_DIR" \
+            | zstd -T0 -1 \
+            | mc pipe "cache/cloakium-cache/$CACHE_KEY/build-output.tar.zst"
+
+          # Also save the args.gn and build metadata
+          mc cp "$BUILD_DIR/args.gn" "cache/cloakium-cache/$CACHE_KEY/args.gn"
+          echo "${{ inputs.upstream_version }}" | mc pipe "cache/cloakium-cache/$CACHE_KEY/version.txt"
+
+          echo "Cache uploaded to: $CACHE_KEY"
+
+          # List what we uploaded
+          mc ls "cache/cloakium-cache/$CACHE_KEY/"
 
       - name: Smoke test
         if: steps.check-asset.outputs.skip == 'false'

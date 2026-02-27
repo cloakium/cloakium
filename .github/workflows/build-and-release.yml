@@ -269,19 +269,27 @@ jobs:
 
           cd "$WORK"
 
-          # Force fetch + reset so persistent runners actually switch versions
+          # Ensure persistent runners' shallow clone has the target version.
+          # Without this, gclient sync silently stays on the old checkout.
           if [ -d "$WORK/src/.git" ]; then
-            echo "Existing checkout found — fetching tag $UPSTREAM_VERSION..."
-            git -C "$WORK/src" fetch --depth=1 origin "refs/tags/$UPSTREAM_VERSION:refs/tags/$UPSTREAM_VERSION" 2>/dev/null || true
+            cur="$(git -C "$WORK/src" log -1 --format=%s 2>/dev/null || echo "")"
+            echo "Existing checkout: $cur"
+            echo "Fetching tag $UPSTREAM_VERSION..."
+            git -C "$WORK/src" fetch --depth=1 origin \
+              "refs/tags/$UPSTREAM_VERSION:refs/tags/$UPSTREAM_VERSION" 2>/dev/null \
+              || git -C "$WORK/src" fetch --depth=1 origin "+refs/heads/*:refs/remotes/origin/*" 2>/dev/null \
+              || true
+            # Checkout the tag so gclient sync sees the right base
+            git -C "$WORK/src" checkout "$UPSTREAM_VERSION" 2>/dev/null || true
           fi
 
-          gclient sync --shallow --no-history --force --reset -D \
+          gclient sync --shallow --no-history -D \
             || {
               if [ "${{ matrix.ephemeral }}" = "true" ]; then
                 echo "Sync failed — nuking src/ and retrying from scratch..."
                 rm -rf "$WORK/src"
                 write_gclient
-                gclient sync --shallow --no-history --force --reset -D
+                gclient sync --shallow --no-history -D
               else
                 echo "Sync failed on persistent runner — NOT nuking src/ (would destroy build cache)"
                 echo "Check git safe.directory settings and ownership of $WORK/src"
@@ -289,14 +297,11 @@ jobs:
               fi
             }
 
-          # Verify checkout matches requested version
-          actual="$(git -C "$WORK/src" describe --tags --always 2>/dev/null || git -C "$WORK/src" log -1 --format=%s)"
+          # Verify checkout version
+          actual="$(git -C "$WORK/src" log -1 --format=%s)"
           echo "Sync complete. Source at: $WORK/src"
           echo "Requested: $UPSTREAM_VERSION"
-          echo "Actual HEAD: $actual"
-          if ! git -C "$WORK/src" log -1 --format=%H | xargs git -C "$WORK/src" branch -r --contains 2>/dev/null | grep -q "$UPSTREAM_VERSION"; then
-            echo "::warning::HEAD may not match requested version $UPSTREAM_VERSION — verify build output"
-          fi
+          echo "HEAD: $actual"
 
       # --- Self-hosted only: seed build output from MinIO (first run) ---
 

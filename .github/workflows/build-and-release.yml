@@ -4,16 +4,48 @@ on:
   workflow_dispatch:
     inputs:
       upstream_version:
-        description: "Upstream Stable version (e.g. 146.0.7680.31)"
-        required: true
+        description: "Upstream Stable version (leave blank to auto-detect from CfT)"
+        required: false
         type: string
+  push:
+    branches: [main]
+    paths:
+      - 'patches/**'
 
 permissions:
   contents: write
 
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      upstream_version: ${{ steps.resolve.outputs.upstream_version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version and compute release tag
+        id: resolve
+        run: |
+          set -euo pipefail
+          v="${{ inputs.upstream_version }}"
+          if [ -z "$v" ]; then
+            echo "Auto-detecting upstream Stable version from CfT..."
+            v="$(curl -fsSL \
+              "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions.json" \
+              | jq -r '.channels.Stable.version')"
+          fi
+          short="$(git rev-parse --short HEAD)"
+          tag="${v}+cloakium-${short}"
+          echo "upstream_version=$v" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Upstream: $v"
+          echo "Cloakium: $short"
+          echo "Tag:      $tag"
+
   ensure-release:
+    needs: prepare
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,7 +55,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag="${{ inputs.upstream_version }}"
+          tag="${{ needs.prepare.outputs.tag }}"
+          upstream="${{ needs.prepare.outputs.upstream_version }}"
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release $tag already exists."
             exit 0
@@ -31,10 +64,10 @@ jobs:
           gh release create "$tag" \
             --repo "$GITHUB_REPOSITORY" \
             --title "$tag" \
-            --notes "Cloakium build based on upstream Chrome Stable $tag (CfT last-known-good)."
+            --notes "Cloakium build based on upstream Chrome Stable $upstream (CfT last-known-good)."
 
   build:
-    needs: ensure-release
+    needs: [prepare, ensure-release]
     strategy:
       fail-fast: false
       matrix:
@@ -76,7 +109,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tag="${{ inputs.upstream_version }}"
+          tag="${{ needs.prepare.outputs.tag }}"
           asset="${{ matrix.asset }}"
 
           # Use curl (always available) instead of gh (missing on some runners)
@@ -206,7 +239,7 @@ jobs:
         if: steps.check-asset.outputs.skip == 'false'
         shell: bash
         env:
-          UPSTREAM_VERSION: ${{ inputs.upstream_version }}
+          UPSTREAM_VERSION: ${{ needs.prepare.outputs.upstream_version }}
         run: |
           set -euo pipefail
           WORK="$WORK_ROOT/chromium"
@@ -255,6 +288,7 @@ jobs:
           CACHE_ENDPOINT: ${{ secrets.CACHE_ENDPOINT }}
           CACHE_ACCESS_KEY: ${{ secrets.CACHE_ACCESS_KEY }}
           CACHE_SECRET_KEY: ${{ secrets.CACHE_SECRET_KEY }}
+          UPSTREAM_VERSION: ${{ needs.prepare.outputs.upstream_version }}
         run: |
           set -euo pipefail
           BUILD_DIR="$CHROMIUM_SRC/out/Cloakium-${{ matrix.target }}"
@@ -271,7 +305,7 @@ jobs:
             exit 0
           fi
 
-          CACHE_KEY="build-cache/${{ matrix.target }}/${{ inputs.upstream_version }}"
+          CACHE_KEY="build-cache/${{ matrix.target }}/$UPSTREAM_VERSION"
           echo "Seeding build output from MinIO: $CACHE_KEY"
 
           # Configure mc if not already configured
@@ -362,6 +396,7 @@ jobs:
               11-*) grep -q 'Stealth: always report PDF' third_party/blink/renderer/modules/plugins/dom_plugin_array.cc ;;
               12-*) grep -q 'ShouldSuppressAutomationInfoBar' chrome/browser/ui/startup/automation_infobar_delegate.cc ;;
               14-*) grep -q 'fingerprint' content/browser/renderer_host/render_process_host_impl.cc ;;
+              15-*) grep -q 'fingerprint-platform' components/embedder_support/user_agent_utils.cc ;;
               24-*) grep -q 'doesAttributeHaveObservableSideEffectOnGet' v8/src/inspector/value-mirror.cc && grep -q 'IsNativeError' v8/src/inspector/value-mirror.cc ;;
               *) return 1 ;;
             esac
@@ -451,11 +486,12 @@ jobs:
           CACHE_ENDPOINT: ${{ secrets.CACHE_ENDPOINT }}
           CACHE_ACCESS_KEY: ${{ secrets.CACHE_ACCESS_KEY }}
           CACHE_SECRET_KEY: ${{ secrets.CACHE_SECRET_KEY }}
+          UPSTREAM_VERSION: ${{ needs.prepare.outputs.upstream_version }}
         run: |
           set -euo pipefail
           cd "$CHROMIUM_SRC"
           BUILD_DIR="out/Cloakium-${{ matrix.target }}"
-          CACHE_KEY="build-cache/${{ matrix.target }}/${{ inputs.upstream_version }}"
+          CACHE_KEY="build-cache/${{ matrix.target }}/$UPSTREAM_VERSION"
 
           # Reconfigure mc (clean runner step)
           mc alias set cache "$CACHE_ENDPOINT" "$CACHE_ACCESS_KEY" "$CACHE_SECRET_KEY"
@@ -470,7 +506,7 @@ jobs:
 
           # Also save the args.gn and build metadata
           mc cp "$BUILD_DIR/args.gn" "cache/cloakium-cache/$CACHE_KEY/args.gn"
-          echo "${{ inputs.upstream_version }}" | mc pipe "cache/cloakium-cache/$CACHE_KEY/version.txt"
+          echo "$UPSTREAM_VERSION" | mc pipe "cache/cloakium-cache/$CACHE_KEY/version.txt"
 
           echo "Cache uploaded to: $CACHE_KEY"
 
@@ -555,14 +591,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag="${{ inputs.upstream_version }}"
+          tag="${{ needs.prepare.outputs.tag }}"
           file="dist/${{ matrix.asset }}"
           gh release upload "$tag" "$file" \
             --repo "$GITHUB_REPOSITORY" \
             --clobber
 
   verify:
-    needs: build
+    needs: [prepare, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -572,7 +608,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag="${{ inputs.upstream_version }}"
+          tag="${{ needs.prepare.outputs.tag }}"
           assets="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name')"
 
           required=(
@@ -602,6 +638,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag="${{ inputs.upstream_version }}"
+          tag="${{ needs.prepare.outputs.tag }}"
           gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --latest
           echo "Release $tag marked as latest."

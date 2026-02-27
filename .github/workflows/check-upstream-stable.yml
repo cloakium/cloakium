@@ -25,19 +25,29 @@ jobs:
           echo "version=$v" >> "$GITHUB_OUTPUT"
           echo "Upstream Stable: $v"
 
-      - name: Check if release already exists for this version
+      - name: Compute compound tag for current patches
+        id: tag
+        run: |
+          set -euo pipefail
+          v="${{ steps.upstream.outputs.version }}"
+          short="$(git rev-parse --short HEAD)"
+          tag="${v}+cloakium-${short}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Compound tag: $tag"
+
+      - name: Check if release already exists for this tag
         id: last
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          v="${{ steps.upstream.outputs.version }}"
-          if gh release view "$v" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          tag="${{ steps.tag.outputs.tag }}"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "Release $v already exists"
+            echo "Release $tag already exists"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
-            echo "No release for $v"
+            echo "No release for $tag"
           fi
 
       - name: Dispatch build if no release exists
@@ -47,7 +57,8 @@ jobs:
         run: |
           set -euo pipefail
           v="${{ steps.upstream.outputs.version }}"
-          echo "New upstream stable detected: $v"
+          tag="${{ steps.tag.outputs.tag }}"
+          echo "No release for $tag — dispatching build"
           gh workflow run build-and-release.yml \
             --repo "$GITHUB_REPOSITORY" \
             -f upstream_version="$v"

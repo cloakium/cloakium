@@ -1,3 +1,25 @@
+diff --git a/v8/src/execution/messages.cc b/v8/src/execution/messages.cc
+index b24aafc1..72b38713 100644
+--- a/v8/src/execution/messages.cc
++++ b/v8/src/execution/messages.cc
+@@ -7,6 +7,7 @@
+ #include <memory>
+
+ #include "src/api/api-inl.h"
++#include "src/debug/debug.h"
+ #include "src/ast/ast.h"
+ #include "src/ast/prettyprinter.h"
+ #include "src/execution/execution.h"
+@@ -323,7 +324,8 @@ MaybeDirectHandle<Object> ErrorUtils::FormatStackTrace(
+           isolate, prepare_stack_trace,
+           JSFunction::GetProperty(isolate, global_error, "prepareStackTrace"));
+
+-      if (IsJSFunction(*prepare_stack_trace)) {
++      if (IsJSFunction(*prepare_stack_trace) &&
++          !isolate->debug()->is_active()) {
+         PrepareStackTraceScope scope(isolate);
+
+         isolate->CountUsage(v8::Isolate::kErrorPrepareStackTrace);
 diff --git a/v8/src/inspector/value-mirror.cc b/v8/src/inspector/value-mirror.cc
 index 17a507a1..6233371f 100644
 --- a/v8/src/inspector/value-mirror.cc

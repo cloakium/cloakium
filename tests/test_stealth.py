@@ -215,23 +215,47 @@ class TestWebDriverDetection:
     # --- CDP prepareStackTrace detection ---
 
     def test_cdp_prepare_stack_trace_not_triggered(self, stealth_page):
-        """Error.prepareStackTrace setter should not be invoked by CDP."""
+        """console.log(Error) must not trigger user prepareStackTrace via CDP.
+
+        Detection sites set a PST trap then console.log an Error. CDP serializes
+        the Error for the devtools frontend, reading .stack — which normally
+        triggers FormatStackTrace → user PST. Our patch skips user PST when
+        the inspector is active.
+        """
         stealth_page.goto("https://example.com")
         triggered = stealth_page.evaluate("""
             () => {
                 let called = false;
-                const original = Error.prepareStackTrace;
-                Error.prepareStackTrace = function(err, stack) {
-                    called = true;
-                    return original ? original(err, stack) : err.stack;
-                };
-                // Force CDP to serialize — this is what detection scripts do
-                void new Error().stack;
-                Error.prepareStackTrace = original;
-                return called;
+                Error.prepareStackTrace = function() { called = true; return ''; };
+                console.log(new Error('cdp-probe'));
+                const result = called;
+                delete Error.prepareStackTrace;
+                return result;
             }
-        """)
-        assert triggered is False, "Error.prepareStackTrace was triggered (CDP leak)"
+        """
+        )
+        assert triggered is False, "Error.prepareStackTrace triggered by console.log (CDP leak)"
+
+    def test_cdp_not_detected_in_worker(self, stealth_page):
+        """Same PST trap inside a Web Worker must not be triggered."""
+        stealth_page.goto("https://example.com")
+        triggered = stealth_page.evaluate("""
+            () => new Promise((resolve, reject) => {
+                const code = `
+                    let called = false;
+                    Error.prepareStackTrace = function() { called = true; return ''; };
+                    console.log(new Error('worker-cdp-probe'));
+                    postMessage(called);
+                `;
+                const blob = new Blob([code], {type: 'application/javascript'});
+                const w = new Worker(URL.createObjectURL(blob));
+                w.onmessage = e => { w.terminate(); resolve(e.data); };
+                w.onerror = e => { w.terminate(); reject(e.message); };
+                setTimeout(() => { w.terminate(); resolve('timeout'); }, 3000);
+            })
+        """
+        )
+        assert triggered is False, "PST triggered in Worker via console.log (CDP leak)"
 
     # --- Playwright globals ---
 

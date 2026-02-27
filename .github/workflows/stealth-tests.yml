@@ -62,25 +62,58 @@ jobs:
           echo "STEALTH_BINARY=$BINARY" >> "$GITHUB_ENV"
           echo "Binary: $BINARY"
 
-      - name: Run stealth tests
+      - name: Run stealth tests (headless)
         env:
           STEALTH_BINARY: ${{ env.STEALTH_BINARY }}
+        shell: bash
         run: |
+          set -o pipefail
           mkdir -p reports
           pytest tests/test_stealth.py::TestWebDriverDetection \
             -v --tb=short \
             --junitxml=reports/results-${{ matrix.platform }}.xml \
-            2>&1 | tee reports/test-output.txt || true
+            2>&1 | tee reports/test-output.txt
+
+      - name: Run stealth tests (headful via Xvfb)
+        if: runner.os == 'Linux'
+        env:
+          STEALTH_BINARY: ${{ env.STEALTH_BINARY }}
+          HEADFUL: "1"
+        shell: bash
+        run: |
+          set -o pipefail
+          sudo apt-get -y install xvfb 2>/dev/null || true
+          xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
+            pytest tests/test_stealth.py::TestWebDriverDetection \
+              -v --tb=short \
+              --junitxml=reports/results-headful-${{ matrix.platform }}.xml \
+              2>&1 | tee -a reports/test-output.txt
+
+      - name: Run stealth tests (headful)
+        if: runner.os == 'macOS'
+        env:
+          STEALTH_BINARY: ${{ env.STEALTH_BINARY }}
+          HEADFUL: "1"
+        shell: bash
+        run: |
+          set -o pipefail
+          pytest tests/test_stealth.py::TestWebDriverDetection \
+            -v --tb=short \
+            --junitxml=reports/results-headful-${{ matrix.platform }}.xml \
+            2>&1 | tee -a reports/test-output.txt
 
       - name: Run live detection site tests
         continue-on-error: true
         env:
           STEALTH_BINARY: ${{ env.STEALTH_BINARY }}
+        shell: bash
         run: |
+          set -o pipefail
+          mkdir -p reports
           pytest tests/test_stealth.py::TestBotDetectionSites \
             -v --tb=short -m slow --timeout=60 \
             --junitxml=reports/results-live-${{ matrix.platform }}.xml \
-            2>&1 | tee -a reports/test-output.txt || true
+            2>&1 | tee -a reports/test-output.txt
 
       - name: Upload test results
         if: always()
@@ -89,6 +122,7 @@ jobs:
           name: results-${{ matrix.platform }}
           path: |
             reports/results-${{ matrix.platform }}.xml
+            reports/results-headful-${{ matrix.platform }}.xml
             reports/results-live-${{ matrix.platform }}.xml
 
   report:

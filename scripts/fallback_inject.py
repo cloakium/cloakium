@@ -402,6 +402,35 @@ def fallback_24():
         ):
             changed = True
 
+    # Part 3: FormatStackTrace — skip user PST when inspector is active
+    msg_f = "v8/src/execution/messages.cc"
+    with open(msg_f) as fh:
+        msg_content = fh.read()
+
+    if 'debug/debug.h' not in msg_content:
+        msg_content = msg_content.replace(
+            '#include "src/api/api-inl.h"',
+            '#include "src/api/api-inl.h"\n#include "src/debug/debug.h"',
+        )
+        with open(msg_f, 'w') as fh:
+            fh.write(msg_content)
+        changed = True
+
+    with open(msg_f) as fh:
+        msg_content = fh.read()
+
+    if 'isolate->debug()->is_active()' not in msg_content:
+        msg_content = msg_content.replace(
+            "      if (IsJSFunction(*prepare_stack_trace)) {\n"
+            "        PrepareStackTraceScope scope(isolate);",
+            "      if (IsJSFunction(*prepare_stack_trace) &&\n"
+            "          !isolate->debug()->is_active()) {\n"
+            "        PrepareStackTraceScope scope(isolate);",
+        )
+        with open(msg_f, 'w') as fh:
+            fh.write(msg_content)
+        changed = True
+
     return changed or "skip the read to avoid triggering user code" in content
 
 

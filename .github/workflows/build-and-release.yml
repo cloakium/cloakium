@@ -37,10 +37,13 @@ jobs:
               | jq -r '.channels.Stable.version')"
           fi
           short="$(git rev-parse --short HEAD)"
-          tag="${v}+cloakium-${short}"
+          # Sequential build number = number of commits on main
+          build_num="$(git rev-list --count HEAD)"
+          tag="${v}+cloakium-${build_num}-${short}"
           echo "upstream_version=$v" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "Upstream: $v"
+          echo "Build:    $build_num"
           echo "Cloakium: $short"
           echo "Tag:      $tag"
 

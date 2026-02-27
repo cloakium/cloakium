@@ -356,6 +356,8 @@ class TestWebDriverDetection:
                 return ext ? gl.getParameter(ext.UNMASKED_VENDOR_WEBGL) : null;
             }
         """)
+        if vendor is None:
+            pytest.skip("WebGL debug_renderer_info unavailable (no GPU)")
         assert vendor == "NVIDIA Corporation", f"WebGL vendor: {vendor}"
 
     def test_webgl_renderer_override(self, stealth_page):
@@ -369,6 +371,8 @@ class TestWebDriverDetection:
                 return ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : null;
             }
         """)
+        if renderer is None:
+            pytest.skip("WebGL debug_renderer_info unavailable (no GPU)")
         assert renderer == "NVIDIA GeForce RTX 3070", f"WebGL renderer: {renderer}"
 
     # --- Client Hints platform consistency ---

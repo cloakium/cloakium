@@ -350,9 +350,12 @@ jobs:
           set -euo pipefail
           cd "$CHROMIUM_SRC"
 
-          # Hard reset to guarantee clean tree
+          # Hard reset to guarantee clean tree (including v8 subdir managed by gclient)
           git reset --hard HEAD
           git clean -fd 2>/dev/null || true
+          if [ -d v8 ] && git -C v8 rev-parse --git-dir &>/dev/null; then
+            git -C v8 checkout -- . 2>/dev/null || true
+          fi
 
           # Phase 1: Inject required #include headers (version-independent).
           ensure_include() {
@@ -406,6 +409,7 @@ jobs:
           }
 
           needs_fallback=()
+          touch_list=()
           for patchfile in "$GITHUB_WORKSPACE/patches/"*.patch; do
             name="$(basename "$patchfile")"
             echo "Applying: $name"
@@ -415,12 +419,25 @@ jobs:
               find . -name '*.rej' -delete 2>/dev/null
               if check_applied "$name"; then
                 echo "  OK (already present): $name"
+                # Collect patched files so we can touch them to force recompilation
+                grep -E '^\+\+\+ [ab]/' "$patchfile" | sed 's|^+++ [ab]/||' >> /tmp/_patch_files.txt 2>/dev/null || true
               else
                 needs_fallback+=("$name")
                 echo "  DEFERRED to fallback: $name"
               fi
             fi
           done
+
+          # Touch files from "already present" patches to ensure ninja recompiles them
+          if [ -f /tmp/_patch_files.txt ]; then
+            sort -u /tmp/_patch_files.txt | while read -r f; do
+              if [ -f "$f" ]; then
+                touch "$f"
+                echo "  Touched: $f"
+              fi
+            done
+            rm -f /tmp/_patch_files.txt
+          fi
 
           # Phase 3: Version-independent fallback injection via Python.
           if [ ${#needs_fallback[@]} -gt 0 ]; then
@@ -703,22 +720,27 @@ jobs:
       - name: Run stealth tests
         env:
           STEALTH_BINARY: ${{ env.STEALTH_BINARY }}
+        shell: bash
         run: |
+          set -o pipefail
           mkdir -p reports
           pytest tests/test_stealth.py::TestWebDriverDetection \
             -v --tb=short \
             --junitxml=reports/results-${{ matrix.platform }}.xml \
-            2>&1 | tee reports/test-output.txt || true
+            2>&1 | tee reports/test-output.txt
 
       - name: Run live detection site tests
         continue-on-error: true
         env:
           STEALTH_BINARY: ${{ env.STEALTH_BINARY }}
+        shell: bash
         run: |
+          set -o pipefail
+          mkdir -p reports
           pytest tests/test_stealth.py::TestBotDetectionSites \
             -v --tb=short -m slow --timeout=60 \
             --junitxml=reports/results-live-${{ matrix.platform }}.xml \
-            2>&1 | tee -a reports/test-output.txt || true
+            2>&1 | tee -a reports/test-output.txt
 
       - name: Upload test results
         if: always()
@@ -820,9 +842,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git stash --include-untracked
           git pull --rebase
-          git stash pop || true
           git add reports/stealth-test-latest.md
           if git diff --cached --quiet; then
             echo "No changes to commit"

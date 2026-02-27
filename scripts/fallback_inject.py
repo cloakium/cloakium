@@ -464,7 +464,49 @@ def fallback_25():
     if "hasUserStackGetter" in content:
         return True
 
-    guard_code = """\
+    # Strategy: find the stack block inside descriptionForError by matching the
+    # opening anchor, then use brace-counting to find the block boundaries.
+    # Insert guard before the original content, wrap it in if (!hasUserStackGetter).
+
+    # Find "std::optional<String16> stack;" then the opening "{" of its block
+    anchor = re.search(
+        r"(  std::optional<String16> stack;\n  \{)\n",
+        content,
+    )
+    if not anchor:
+        print(f"  WARN: Could not find stack block anchor in {f}")
+        return False
+
+    # Verify this is inside descriptionForError (not some other function)
+    preceding = content[max(0, anchor.start() - 300):anchor.start()]
+    if "descriptionForError" not in preceding:
+        print(f"  WARN: stack block not inside descriptionForError")
+        return False
+
+    block_open = anchor.end()  # position right after "{\n"
+
+    # Find the matching close brace for this block
+    depth = 1
+    i = block_open
+    while i < len(content) and depth > 0:
+        if content[i] == "{":
+            depth += 1
+        elif content[i] == "}":
+            depth -= 1
+        i += 1
+    if depth != 0:
+        print(f"  WARN: unbalanced braces in stack block")
+        return False
+    block_close = i  # position right after the closing "}"
+
+    # Extract original block body and re-indent by 2 spaces
+    original_body = content[block_open:block_close - 1]  # exclude closing }
+    indented_body = "\n".join(
+        ("  " + line if line.strip() else line)
+        for line in original_body.split("\n")
+    )
+
+    guard = """\
     // Stealth: skip .stack read if it has a user-defined accessor (getter).
     // Sites detect CDP by defining Object.defineProperty(error, "stack",
     // {get: ...}) then passing to console.debug() — CDP serialization
@@ -488,43 +530,8 @@ def fallback_25():
     if (!hasUserStackGetter) {
 """
 
-    # Find the stack-reading block inside descriptionForError and wrap it
-    pattern = (
-        r"(  std::optional<String16> stack;\n  \{\n)"
-        r"(    v8::Local<v8::Value> stackValue;\n"
-        r"    if \(getErrorProperty\(context, object, toV8String\(isolate, \"stack\"\)\)\n"
-        r"            \.ToLocal\(&stackValue\) &&\n"
-        r"        stackValue->IsString\(\)\) \{\n"
-        r"      String16 stackString =\n"
-        r"          toProtocolString\(isolate, stackValue\.As<v8::String>\(\)\);\n"
-        r"      size_t pos = stackString\.find\(\"\\\\n    at \"\);\n"
-        r"      if \(pos != String16::kNotFound\) \{\n"
-        r"        stack = stackString\.substring\(pos\);\n"
-        r"      \}\n"
-        r"    \}\n"
-        r"  \})"
-    )
-
-    match = re.search(pattern, content)
-    if not match:
-        print(f"  WARN: Could not find stack-reading block in {f}")
-        return False
-
-    # Rebuild with guard wrapping the original stack read
-    original_read = match.group(2)
-    # Re-indent original read by 2 extra spaces for the if block
-    indented_read = "\n".join(
-        ("  " + line if line.strip() else line)
-        for line in original_read.split("\n")
-    )
-    replacement = (
-        match.group(1)
-        + guard_code
-        + indented_read.rstrip()
-        + "\n    }\n  }"
-    )
-
-    content = content[:match.start()] + replacement + content[match.end():]
+    new_block = guard + indented_body + "\n    }\n  }"
+    content = content[:block_open] + new_block + content[block_close:]
     with open(f, "w") as fh:
         fh.write(content)
     return True

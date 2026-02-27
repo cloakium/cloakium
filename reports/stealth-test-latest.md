@@ -1,5 +1,6 @@
 # Stealth Test Report
 
+<<<<<<< Updated upstream
 **Date:** 2026-02-27 17:13 UTC
 
 ## darwin-arm64
@@ -85,3 +86,8 @@
 | `test_whatismybrowser` | PASS | 4.20s |
 
 **Total: 54/54 passed across 4 platform(s) in 92.4s**
+=======
+**Date:** 2026-02-27 17:20 UTC
+
+No test results found.
+>>>>>>> Stashed changes

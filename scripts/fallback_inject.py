@@ -270,6 +270,31 @@ def fallback_11():
     return True
 
 
+def fallback_15():
+    """Client Hints platform override — match --fingerprint-platform."""
+    f = "components/embedder_support/user_agent_utils.cc"
+    code = """\
+  // Stealth: override Client Hints platform to match --fingerprint-platform
+  const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
+  if (cmd->HasSwitch("fingerprint-platform")) {
+    std::string plat = cmd->GetSwitchValueASCII("fingerprint-platform");
+    if (plat == "windows")
+      return "Windows";
+    if (plat == "macos" || plat == "mac")
+      return "macOS";
+    if (plat == "linux")
+      return "Linux";
+    return plat;
+  }
+
+"""
+    return inject_after_pattern(
+        f,
+        r"std::string GetPlatformForUAMetadata\(\) \{\n",
+        code,
+    )
+
+
 FALLBACKS = {
     "01-cli-switches.patch": fallback_01,
     "02-navigator-webdriver-platform.patch": fallback_02,
@@ -277,6 +302,7 @@ FALLBACKS = {
     "06-webgl-gpu-spoof.patch": fallback_06,
     "08-audio-noise.patch": fallback_08,
     "11-plugins-always-present.patch": fallback_11,
+    "15-client-hints-platform.patch": fallback_15,
 }
 
 

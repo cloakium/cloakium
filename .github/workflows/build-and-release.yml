@@ -269,9 +269,17 @@ jobs:
 
           cd "$WORK"
 
-          # Log current checkout for diagnostics
+          # Clean up uncommitted patch changes so gclient sync --revision
+          # doesn't refuse to update. Only resets src/ (not deps or out/).
           if [ -d "$WORK/src/.git" ]; then
             echo "Existing checkout: $(git -C "$WORK/src" log -1 --format=%s 2>/dev/null || echo 'unknown')"
+            git -C "$WORK/src" reset --hard HEAD 2>/dev/null || true
+            git -C "$WORK/src" clean -fd 2>/dev/null || true
+            # Also clean v8 subdir (managed by gclient, has its own .git)
+            if [ -d "$WORK/src/v8/.git" ]; then
+              git -C "$WORK/src/v8" reset --hard HEAD 2>/dev/null || true
+              git -C "$WORK/src/v8" clean -fd 2>/dev/null || true
+            fi
           fi
 
           # --revision src@VERSION forces gclient to fetch+checkout the exact

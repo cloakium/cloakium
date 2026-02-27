@@ -268,20 +268,35 @@ jobs:
           write_gclient
 
           cd "$WORK"
-          gclient sync --shallow --no-history -D \
+
+          # Force fetch + reset so persistent runners actually switch versions
+          if [ -d "$WORK/src/.git" ]; then
+            echo "Existing checkout found — fetching tag $UPSTREAM_VERSION..."
+            git -C "$WORK/src" fetch --depth=1 origin "refs/tags/$UPSTREAM_VERSION:refs/tags/$UPSTREAM_VERSION" 2>/dev/null || true
+          fi
+
+          gclient sync --shallow --no-history --force --reset -D \
             || {
               if [ "${{ matrix.ephemeral }}" = "true" ]; then
                 echo "Sync failed — nuking src/ and retrying from scratch..."
                 rm -rf "$WORK/src"
                 write_gclient
-                gclient sync --shallow --no-history -D
+                gclient sync --shallow --no-history --force --reset -D
               else
                 echo "Sync failed on persistent runner — NOT nuking src/ (would destroy build cache)"
                 echo "Check git safe.directory settings and ownership of $WORK/src"
                 exit 1
               fi
             }
+
+          # Verify checkout matches requested version
+          actual="$(git -C "$WORK/src" describe --tags --always 2>/dev/null || git -C "$WORK/src" log -1 --format=%s)"
           echo "Sync complete. Source at: $WORK/src"
+          echo "Requested: $UPSTREAM_VERSION"
+          echo "Actual HEAD: $actual"
+          if ! git -C "$WORK/src" log -1 --format=%H | xargs git -C "$WORK/src" branch -r --contains 2>/dev/null | grep -q "$UPSTREAM_VERSION"; then
+            echo "::warning::HEAD may not match requested version $UPSTREAM_VERSION — verify build output"
+          fi
 
       # --- Self-hosted only: seed build output from MinIO (first run) ---
 

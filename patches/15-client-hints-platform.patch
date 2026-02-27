@@ -1,0 +1,24 @@
+diff --git a/components/embedder_support/user_agent_utils.cc b/components/embedder_support/user_agent_utils.cc
+index d9c1b174c2..24cb78681f 100644
+--- a/components/embedder_support/user_agent_utils.cc
++++ b/components/embedder_support/user_agent_utils.cc
+@@ -604,6 +604,19 @@ std::string GetPlatformVersion() {
+ }
+ 
+ std::string GetPlatformForUAMetadata() {
++  // Stealth: override Client Hints platform to match --fingerprint-platform
++  const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
++  if (cmd->HasSwitch("fingerprint-platform")) {
++    std::string plat = cmd->GetSwitchValueASCII("fingerprint-platform");
++    if (plat == "windows")
++      return "Windows";
++    if (plat == "macos" || plat == "mac")
++      return "macOS";
++    if (plat == "linux")
++      return "Linux";
++    return plat;
++  }
++
+ #if BUILDFLAG(IS_ANDROID)
+   if (base::android::device_info::is_desktop() ||
+       base::android::device_info::is_xr()) {

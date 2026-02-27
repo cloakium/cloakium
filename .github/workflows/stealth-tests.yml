@@ -76,12 +76,24 @@ jobs:
             --junitxml=reports/results-${{ matrix.platform }}.xml \
             2>&1 | tee reports/test-output.txt || true
 
+      - name: Run live detection site tests
+        continue-on-error: true
+        env:
+          STEALTH_BINARY: ${{ env.STEALTH_BINARY }}
+        run: |
+          pytest tests/test_stealth.py::TestBotDetectionSites \
+            -v --tb=short -m slow --timeout=60 \
+            --junitxml=reports/results-live-${{ matrix.platform }}.xml \
+            2>&1 | tee -a reports/test-output.txt || true
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: results-${{ matrix.platform }}
-          path: reports/results-${{ matrix.platform }}.xml
+          path: |
+            reports/results-${{ matrix.platform }}.xml
+            reports/results-live-${{ matrix.platform }}.xml
 
   report:
     needs: test

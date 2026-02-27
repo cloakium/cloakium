@@ -731,7 +731,7 @@ jobs:
           set -o pipefail
           mkdir -p reports
           if [ "$RUNNER_OS" = "Linux" ]; then
-            HEADFUL=1 EXTRA_STEALTH_ARGS="--use-angle=swiftshader-webgl --ignore-gpu-blocklist" \
+            HEADFUL=1 EXTRA_STEALTH_ARGS="--use-gl=swiftshader --ignore-gpu-blocklist" \
               xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
               pytest tests/test_stealth.py::TestWebDriverDetection \
               -v --tb=short \
@@ -753,7 +753,7 @@ jobs:
           set -o pipefail
           mkdir -p reports
           if [ "$RUNNER_OS" = "Linux" ]; then
-            HEADFUL=1 EXTRA_STEALTH_ARGS="--use-angle=swiftshader-webgl --ignore-gpu-blocklist" \
+            HEADFUL=1 EXTRA_STEALTH_ARGS="--use-gl=swiftshader --ignore-gpu-blocklist" \
               xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
               pytest tests/test_stealth.py::TestBotDetectionSites \
               -v --tb=short -m slow --timeout=60 \

@@ -478,7 +478,7 @@ def fallback_25():
         return False
 
     # Verify this is inside descriptionForError (not some other function)
-    preceding = content[max(0, anchor.start() - 300):anchor.start()]
+    preceding = content[max(0, anchor.start() - 2000):anchor.start()]
     if "descriptionForError" not in preceding:
         print(f"  WARN: stack block not inside descriptionForError")
         return False

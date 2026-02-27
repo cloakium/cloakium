@@ -11,6 +11,8 @@ on:
     branches: [main]
     paths:
       - 'patches/**'
+      - 'scripts/**'
+      - '.github/workflows/build-and-release.yml'
 
 permissions:
   contents: write
@@ -37,8 +39,8 @@ jobs:
               | jq -r '.channels.Stable.version')"
           fi
           short="$(git rev-parse --short HEAD)"
-          # Sequential build number = number of commits on main
-          build_num="$(git rev-list --count HEAD)"
+          # Build number = DDHHMM in UTC so newer builds always sort higher
+          build_num="$(date -u +'%d%H%M')"
           tag="${v}+cloakium-${build_num}-${short}"
           echo "upstream_version=$v" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"

@@ -74,7 +74,7 @@ with sync_playwright() as pw:
 
 ## Patches
 
-15 patches applied at compile time to the Chromium source:
+16 patches applied at compile time to the Chromium source:
 
 | # | Patch | What it does |
 |---|-------|-------------|
@@ -93,6 +93,7 @@ with sync_playwright() as pw:
 | 14 | `propagate-switches-to-renderer` | Forwards `--fingerprint*` switches to renderer processes |
 | 15 | `client-hints-platform` | `navigator.userAgentData.platform` matches `--fingerprint-platform` |
 | 24 | `suppress-prepareStackTrace-CDP-detection` | Prevents `Error.prepareStackTrace` trap from detecting CDP via `console.log` |
+| 25 | `suppress-console-debug-getter-cdp` | Skips `.stack` read when user-defined getter detected, blocking `console.debug()` CDP detection |
 
 ## How it works
 

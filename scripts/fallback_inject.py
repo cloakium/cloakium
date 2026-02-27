@@ -449,6 +449,87 @@ def fallback_24():
     return changed or "skip the read to avoid triggering user code" in content
 
 
+def fallback_25():
+    """Suppress console.debug getter-based CDP detection in descriptionForError.
+
+    Wraps the .stack read in descriptionForError() with a check for
+    user-defined accessors. If .stack has a getter, skip the read entirely.
+    """
+    f = "v8/src/inspector/value-mirror.cc"
+    if not os.path.isfile(f):
+        return False
+    with open(f) as fh:
+        content = fh.read()
+
+    if "hasUserStackGetter" in content:
+        return True
+
+    guard_code = """\
+    // Stealth: skip .stack read if it has a user-defined accessor (getter).
+    // Sites detect CDP by defining Object.defineProperty(error, "stack",
+    // {get: ...}) then passing to console.debug() — CDP serialization
+    // triggers the getter, revealing inspector presence.
+    bool hasUserStackGetter = false;
+    {
+      v8::Local<v8::Value> stackDesc;
+      v8::Local<v8::String> stackName = toV8String(isolate, "stack");
+      if (object->GetOwnPropertyDescriptor(context, stackName)
+              .ToLocal(&stackDesc) &&
+          stackDesc->IsObject()) {
+        v8::Local<v8::Object> descObj = stackDesc.As<v8::Object>();
+        v8::Local<v8::Value> getter;
+        if (descObj->Get(context, toV8String(isolate, "get"))
+                .ToLocal(&getter) &&
+            getter->IsFunction()) {
+          hasUserStackGetter = true;
+        }
+      }
+    }
+    if (!hasUserStackGetter) {
+"""
+
+    # Find the stack-reading block inside descriptionForError and wrap it
+    pattern = (
+        r"(  std::optional<String16> stack;\n  \{\n)"
+        r"(    v8::Local<v8::Value> stackValue;\n"
+        r"    if \(getErrorProperty\(context, object, toV8String\(isolate, \"stack\"\)\)\n"
+        r"            \.ToLocal\(&stackValue\) &&\n"
+        r"        stackValue->IsString\(\)\) \{\n"
+        r"      String16 stackString =\n"
+        r"          toProtocolString\(isolate, stackValue\.As<v8::String>\(\)\);\n"
+        r"      size_t pos = stackString\.find\(\"\\\\n    at \"\);\n"
+        r"      if \(pos != String16::kNotFound\) \{\n"
+        r"        stack = stackString\.substring\(pos\);\n"
+        r"      \}\n"
+        r"    \}\n"
+        r"  \})"
+    )
+
+    match = re.search(pattern, content)
+    if not match:
+        print(f"  WARN: Could not find stack-reading block in {f}")
+        return False
+
+    # Rebuild with guard wrapping the original stack read
+    original_read = match.group(2)
+    # Re-indent original read by 2 extra spaces for the if block
+    indented_read = "\n".join(
+        ("  " + line if line.strip() else line)
+        for line in original_read.split("\n")
+    )
+    replacement = (
+        match.group(1)
+        + guard_code
+        + indented_read.rstrip()
+        + "\n    }\n  }"
+    )
+
+    content = content[:match.start()] + replacement + content[match.end():]
+    with open(f, "w") as fh:
+        fh.write(content)
+    return True
+
+
 FALLBACKS = {
     "01-cli-switches.patch": fallback_01,
     "02-navigator-webdriver-platform.patch": fallback_02,
@@ -458,6 +539,7 @@ FALLBACKS = {
     "11-plugins-always-present.patch": fallback_11,
     "15-client-hints-platform.patch": fallback_15,
     "24-suppress-prepareStackTrace-CDP-detection.patch": fallback_24,
+    "25-suppress-console-debug-getter-cdp.patch": fallback_25,
 }
 
 

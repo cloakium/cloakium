@@ -1,0 +1,52 @@
+diff --git a/v8/src/inspector/value-mirror.cc b/v8/src/inspector/value-mirror.cc
+--- a/v8/src/inspector/value-mirror.cc
++++ b/v8/src/inspector/value-mirror.cc
+@@ -345,17 +345,39 @@
+
+   std::optional<String16> stack;
+   {
+-    v8::Local<v8::Value> stackValue;
+-    if (getErrorProperty(context, object, toV8String(isolate, "stack"))
+-            .ToLocal(&stackValue) &&
+-        stackValue->IsString()) {
+-      String16 stackString =
+-          toProtocolString(isolate, stackValue.As<v8::String>());
+-      size_t pos = stackString.find("\n    at ");
+-      if (pos != String16::kNotFound) {
+-        stack = stackString.substring(pos);
++    // Stealth: skip .stack read if it has a user-defined accessor (getter).
++    // Sites detect CDP by defining Object.defineProperty(error, "stack",
++    // {get: ...}) then passing to console.debug() — CDP serialization
++    // triggers the getter, revealing inspector presence.
++    bool hasUserStackGetter = false;
++    {
++      v8::Local<v8::Value> stackDesc;
++      v8::Local<v8::String> stackName = toV8String(isolate, "stack");
++      if (object->GetOwnPropertyDescriptor(context, stackName)
++              .ToLocal(&stackDesc) &&
++          stackDesc->IsObject()) {
++        v8::Local<v8::Object> descObj = stackDesc.As<v8::Object>();
++        v8::Local<v8::Value> getter;
++        if (descObj->Get(context, toV8String(isolate, "get"))
++                .ToLocal(&getter) &&
++            getter->IsFunction()) {
++          hasUserStackGetter = true;
++        }
+       }
+     }
++    if (!hasUserStackGetter) {
++      v8::Local<v8::Value> stackValue;
++      if (getErrorProperty(context, object, toV8String(isolate, "stack"))
++              .ToLocal(&stackValue) &&
++          stackValue->IsString()) {
++        String16 stackString =
++            toProtocolString(isolate, stackValue.As<v8::String>());
++        size_t pos = stackString.find("\n    at ");
++        if (pos != String16::kNotFound) {
++          stack = stackString.substring(pos);
++        }
++      }
++    }
+   }
+
+   std::optional<String16> message;

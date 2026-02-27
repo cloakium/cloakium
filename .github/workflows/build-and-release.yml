@@ -406,6 +406,7 @@ jobs:
               14-*) grep -q 'fingerprint' content/browser/renderer_host/render_process_host_impl.cc ;;
               15-*) grep -q 'fingerprint-platform' components/embedder_support/user_agent_utils.cc ;;
               24-*) grep -q 'console_delegate' v8/src/execution/messages.cc ;;
+              25-*) grep -q 'hasUserStackGetter' v8/src/inspector/value-mirror.cc ;;
               *) return 1 ;;
             esac
           }
@@ -691,6 +692,10 @@ jobs:
           playwright install chromium
           playwright install-deps chromium
 
+      - name: Install xvfb (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
       - name: Download Cloakium binary
         env:
           GH_TOKEN: ${{ github.token }}
@@ -725,10 +730,18 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p reports
-          pytest tests/test_stealth.py::TestWebDriverDetection \
-            -v --tb=short \
-            --junitxml=reports/results-${{ matrix.platform }}.xml \
-            2>&1 | tee reports/test-output.txt
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            HEADFUL=1 xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
+              pytest tests/test_stealth.py::TestWebDriverDetection \
+              -v --tb=short \
+              --junitxml=reports/results-${{ matrix.platform }}.xml \
+              2>&1 | tee reports/test-output.txt
+          else
+            pytest tests/test_stealth.py::TestWebDriverDetection \
+              -v --tb=short \
+              --junitxml=reports/results-${{ matrix.platform }}.xml \
+              2>&1 | tee reports/test-output.txt
+          fi
 
       - name: Run live detection site tests
         continue-on-error: true
@@ -738,10 +751,18 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p reports
-          pytest tests/test_stealth.py::TestBotDetectionSites \
-            -v --tb=short -m slow --timeout=60 \
-            --junitxml=reports/results-live-${{ matrix.platform }}.xml \
-            2>&1 | tee -a reports/test-output.txt
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            HEADFUL=1 xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
+              pytest tests/test_stealth.py::TestBotDetectionSites \
+              -v --tb=short -m slow --timeout=60 \
+              --junitxml=reports/results-live-${{ matrix.platform }}.xml \
+              2>&1 | tee -a reports/test-output.txt
+          else
+            pytest tests/test_stealth.py::TestBotDetectionSites \
+              -v --tb=short -m slow --timeout=60 \
+              --junitxml=reports/results-live-${{ matrix.platform }}.xml \
+              2>&1 | tee -a reports/test-output.txt
+          fi
 
       - name: Upload test results
         if: always()

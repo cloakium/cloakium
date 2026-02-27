@@ -34,7 +34,7 @@ STEALTH_ARGS = [
     "--fingerprint-hardware-concurrency=8",
     "--fingerprint-gpu-vendor=NVIDIA Corporation",
     "--fingerprint-gpu-renderer=NVIDIA GeForce RTX 3070",
-]
+] + os.environ.get("EXTRA_STEALTH_ARGS", "").split()
 
 
 @pytest.fixture(scope="class")

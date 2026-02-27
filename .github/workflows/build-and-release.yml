@@ -731,7 +731,8 @@ jobs:
           set -o pipefail
           mkdir -p reports
           if [ "$RUNNER_OS" = "Linux" ]; then
-            HEADFUL=1 xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
+            HEADFUL=1 EXTRA_STEALTH_ARGS="--use-angle=swiftshader-webgl" \
+              xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
               pytest tests/test_stealth.py::TestWebDriverDetection \
               -v --tb=short \
               --junitxml=reports/results-${{ matrix.platform }}.xml \
@@ -752,7 +753,8 @@ jobs:
           set -o pipefail
           mkdir -p reports
           if [ "$RUNNER_OS" = "Linux" ]; then
-            HEADFUL=1 xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
+            HEADFUL=1 EXTRA_STEALTH_ARGS="--use-angle=swiftshader-webgl" \
+              xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
               pytest tests/test_stealth.py::TestBotDetectionSites \
               -v --tb=short -m slow --timeout=60 \
               --junitxml=reports/results-live-${{ matrix.platform }}.xml \

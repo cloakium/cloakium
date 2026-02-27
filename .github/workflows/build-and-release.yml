@@ -497,9 +497,9 @@ jobs:
           target_cpu = "$TARGET_CPU"
           GNEOF
 
-          # macOS: use Xcode 16.2 SDK + disable Metal (host lacks Metal toolchain)
+          # macOS: discover SDK dynamically via xcrun
           if [ "$TARGET_OS" = "mac" ]; then
-            SDK_PATH="/Applications/Xcode-16.2.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.2.sdk"
+            SDK_PATH="$(xcrun --show-sdk-path 2>/dev/null)"
             if [ -d "$SDK_PATH" ]; then
               echo "mac_sdk_path = \"$SDK_PATH\"" >> "$BUILD_DIR/args.gn"
             fi

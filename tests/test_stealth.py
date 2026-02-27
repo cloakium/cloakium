@@ -16,6 +16,7 @@ Usage:
 
 import os
 import json
+import platform
 import pytest
 from playwright.sync_api import sync_playwright
 
@@ -31,6 +32,22 @@ STEALTH_ARGS = [
     "--disable-blink-features=AutomationControlled",
     "--fingerprint=42",
     "--fingerprint-platform=windows",
+    "--fingerprint-hardware-concurrency=8",
+    "--fingerprint-gpu-vendor=NVIDIA Corporation",
+    "--fingerprint-gpu-renderer=NVIDIA GeForce RTX 3070",
+] + os.environ.get("EXTRA_STEALTH_ARGS", "").split()
+
+# OS-appropriate args for live site tests — no cross-OS platform spoofing.
+# Detection sites flag mismatches between UA (reflects real OS) and
+# navigator.platform / Client Hints (overridden by --fingerprint-platform).
+_OS_PLATFORM = {"Darwin": "macos", "Linux": "linux", "Windows": "windows"}.get(
+    platform.system(), "linux"
+)
+LIVE_ARGS = [
+    "--no-sandbox",
+    "--disable-blink-features=AutomationControlled",
+    "--fingerprint=42",
+    f"--fingerprint-platform={_OS_PLATFORM}",
     "--fingerprint-hardware-concurrency=8",
     "--fingerprint-gpu-vendor=NVIDIA Corporation",
     "--fingerprint-gpu-renderer=NVIDIA GeForce RTX 3070",
@@ -70,7 +87,7 @@ def live_page():
         executable_path=BINARY,
         headless=not HEADFUL,
         slow_mo=SLOW_MO,
-        args=STEALTH_ARGS,
+        args=LIVE_ARGS,
         ignore_default_args=["--enable-automation"],
     )
     page = browser.new_page()
@@ -489,3 +506,52 @@ class TestBotDetectionSites:
         live_page.wait_for_timeout(3000)
         content = live_page.content()
         assert "score" in content.lower()
+
+    @pytest.mark.slow
+    @pytest.mark.timeout(45)
+    def test_whatismybrowser(self, live_page):
+        """whatismybrowser.com detected OS should match actual OS."""
+        live_page.goto("https://www.whatismybrowser.com/", timeout=30000)
+        live_page.wait_for_timeout(2000)
+        # Dismiss cookie consent if present
+        try:
+            consent = live_page.locator("button:has-text('Consent')")
+            if consent.count() > 0:
+                consent.first.click()
+                live_page.wait_for_timeout(1000)
+        except Exception:
+            pass
+
+        result = live_page.evaluate("""
+            () => {
+                const major = document.querySelector(".string-major");
+                const minor = document.querySelector(".string-minor");
+                return {
+                    detected: major ? major.textContent.trim() : "",
+                    os_detail: minor ? minor.textContent.trim() : "",
+                    user_agent: navigator.userAgent,
+                    platform: navigator.platform,
+                    ua_platform: navigator.userAgentData
+                        ? navigator.userAgentData.platform : "N/A",
+                };
+            }
+        """)
+        detected = result["detected"].lower()
+        ua = result["user_agent"].lower()
+        plat = result["platform"].lower()
+        ua_plat = result["ua_platform"].lower()
+
+        actual_os = platform.system()  # Darwin, Linux, Windows
+        if actual_os == "Darwin":
+            # All signals should say macOS
+            assert "mac" in ua, f"UA doesn't mention mac: {result['user_agent']}"
+            assert plat == "macintel", f"platform mismatch: {plat}"
+            assert ua_plat == "macos", f"Client Hints mismatch: {ua_plat}"
+            assert "windows" not in detected and "linux" not in detected, \
+                f"Site detected wrong OS: {result['detected']}"
+        elif actual_os == "Linux":
+            assert "linux" in ua, f"UA doesn't mention linux: {result['user_agent']}"
+            assert "linux" in plat, f"platform mismatch: {plat}"
+            assert ua_plat == "linux", f"Client Hints mismatch: {ua_plat}"
+            assert "windows" not in detected and "mac" not in detected, \
+                f"Site detected wrong OS: {result['detected']}"

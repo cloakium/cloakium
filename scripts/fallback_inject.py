@@ -419,14 +419,19 @@ def fallback_24():
     with open(msg_f) as fh:
         msg_content = fh.read()
 
-    if 'isolate->debug()->is_active()' not in msg_content:
-        msg_content = msg_content.replace(
-            "      if (IsJSFunction(*prepare_stack_trace)) {\n"
-            "        PrepareStackTraceScope scope(isolate);",
-            "      if (IsJSFunction(*prepare_stack_trace) &&\n"
-            "          !isolate->debug()->is_active()) {\n"
-            "        PrepareStackTraceScope scope(isolate);",
-        )
+    if 'console_delegate() == nullptr' not in msg_content:
+        # Replace the original one-line condition with our multi-line guard
+        old_cond = "      if (IsJSFunction(*prepare_stack_trace)) {\n"
+        new_cond = ("      if (IsJSFunction(*prepare_stack_trace) &&\n"
+                    "          !isolate->debug()->is_active() &&\n"
+                    "          isolate->console_delegate() == nullptr) {\n")
+        # Handle both fresh file and previously-patched (is_active only) file
+        if old_cond in msg_content:
+            msg_content = msg_content.replace(old_cond, new_cond)
+        else:
+            old_partial = ("      if (IsJSFunction(*prepare_stack_trace) &&\n"
+                           "          !isolate->debug()->is_active()) {\n")
+            msg_content = msg_content.replace(old_partial, new_cond)
         with open(msg_f, 'w') as fh:
             fh.write(msg_content)
         changed = True

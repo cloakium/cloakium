@@ -403,7 +403,7 @@ jobs:
               12-*) grep -q 'ShouldSuppressAutomationInfoBar' chrome/browser/ui/startup/automation_infobar_delegate.cc ;;
               14-*) grep -q 'fingerprint' content/browser/renderer_host/render_process_host_impl.cc ;;
               15-*) grep -q 'fingerprint-platform' components/embedder_support/user_agent_utils.cc ;;
-              24-*) grep -q 'IsNativeError' v8/src/inspector/value-mirror.cc && grep -q 'is_active' v8/src/execution/messages.cc ;;
+              24-*) grep -q 'IsNativeError' v8/src/inspector/value-mirror.cc && grep -q 'console_delegate' v8/src/execution/messages.cc ;;
               *) return 1 ;;
             esac
           }

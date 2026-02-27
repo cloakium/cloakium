@@ -16,7 +16,8 @@ index b24aafc1..72b38713 100644
 
 -      if (IsJSFunction(*prepare_stack_trace)) {
 +      if (IsJSFunction(*prepare_stack_trace) &&
-+          !isolate->debug()->is_active()) {
++          !isolate->debug()->is_active() &&
++          isolate->console_delegate() == nullptr) {
          PrepareStackTraceScope scope(isolate);
 
          isolate->CountUsage(v8::Isolate::kErrorPrepareStackTrace);

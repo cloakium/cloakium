@@ -641,3 +641,189 @@ jobs:
           tag="${{ needs.prepare.outputs.tag }}"
           gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --latest
           echo "Release $tag marked as latest."
+
+  stealth-test:
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-amd64
+            runner: ubuntu-latest
+            binary_name: chrome
+          - platform: darwin-arm64
+            runner: macos-latest
+            binary_name: Chromium
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: |
+          pip install pytest pytest-timeout playwright
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: Download Cloakium binary
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/download.py --platform ${{ matrix.platform }} --dest ./cloakium-bin
+
+      - name: Resolve binary path
+        run: |
+          BINARY="$(find ./cloakium-bin -name "${{ matrix.binary_name }}" -type f | head -1)"
+          if [ -z "$BINARY" ]; then
+            echo "::error::Binary '${{ matrix.binary_name }}' not found in cloakium-bin/"
+            exit 1
+          fi
+          chmod +x "$BINARY"
+          if [ "$(uname -s)" = "Darwin" ]; then
+            chmod -R +x ./cloakium-bin/
+            xattr -cr ./cloakium-bin/
+            APP_BUNDLE="$(find ./cloakium-bin -name '*.app' -type d | head -1)"
+            if [ -n "$APP_BUNDLE" ]; then
+              find "$APP_BUNDLE/Contents/Frameworks" \( -name "*.framework" -o -name "*.app" -o -name "*.dylib" \) -print0 \
+                | xargs -0 -I{} codesign --sign - --force "{}" 2>&1 || true
+              codesign --sign - --force "$APP_BUNDLE" 2>&1 || true
+            fi
+          fi
+          echo "STEALTH_BINARY=$BINARY" >> "$GITHUB_ENV"
+          echo "Binary: $BINARY"
+
+      - name: Run stealth tests
+        env:
+          STEALTH_BINARY: ${{ env.STEALTH_BINARY }}
+        run: |
+          mkdir -p reports
+          pytest tests/test_stealth.py::TestWebDriverDetection \
+            -v --tb=short \
+            --junitxml=reports/results-${{ matrix.platform }}.xml \
+            2>&1 | tee reports/test-output.txt || true
+
+      - name: Run live detection site tests
+        continue-on-error: true
+        env:
+          STEALTH_BINARY: ${{ env.STEALTH_BINARY }}
+        run: |
+          pytest tests/test_stealth.py::TestBotDetectionSites \
+            -v --tb=short -m slow --timeout=60 \
+            --junitxml=reports/results-live-${{ matrix.platform }}.xml \
+            2>&1 | tee -a reports/test-output.txt || true
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-${{ matrix.platform }}
+          path: |
+            reports/results-${{ matrix.platform }}.xml
+            reports/results-live-${{ matrix.platform }}.xml
+
+  stealth-report:
+    needs: stealth-test
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all test results
+        uses: actions/download-artifact@v4
+        with:
+          path: reports
+          merge-multiple: true
+
+      - name: Generate combined report
+        run: |
+          python3 - <<'PYEOF'
+          import xml.etree.ElementTree as ET
+          import datetime, glob, os
+
+          timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+          lines = [
+              "# Stealth Test Report",
+              "",
+              f"**Date:** {timestamp}",
+              "",
+          ]
+
+          xml_files = sorted(glob.glob("reports/results-*.xml"))
+          if not xml_files:
+              lines.append("No test results found.")
+              with open("reports/stealth-test-latest.md", "w") as f:
+                  f.write("\n".join(lines))
+              raise SystemExit(0)
+
+          grand_passed = grand_total = 0
+          grand_time = 0.0
+
+          for xml_path in xml_files:
+              platform = os.path.basename(xml_path).replace("results-", "").replace(".xml", "")
+              tree = ET.parse(xml_path)
+              root = tree.getroot()
+              suite = root.find("testsuite") if root.tag != "testsuite" else root
+
+              tests = int(suite.get("tests", 0))
+              failures = int(suite.get("failures", 0))
+              errors = int(suite.get("errors", 0))
+              skipped = int(suite.get("skipped", 0))
+              suite_time = float(suite.get("time", 0))
+              passed = tests - failures - errors - skipped
+
+              grand_passed += passed
+              grand_total += tests
+              grand_time += suite_time
+
+              lines.append(f"## {platform}")
+              lines.append("")
+              lines.append(f"**Result:** {passed}/{tests} passed in {suite_time:.1f}s")
+              lines.append("")
+              lines.append("| Test | Status | Time |")
+              lines.append("|------|--------|------|")
+
+              for tc in suite.iter("testcase"):
+                  name = tc.get("name", "unknown")
+                  tc_time = float(tc.get("time", 0))
+                  failure = tc.find("failure")
+                  error = tc.find("error")
+                  skip = tc.find("skipped")
+                  if failure is not None:
+                      status = "FAIL"
+                  elif error is not None:
+                      status = "ERROR"
+                  elif skip is not None:
+                      status = "SKIP"
+                  else:
+                      status = "PASS"
+                  lines.append(f"| `{name}` | {status} | {tc_time:.2f}s |")
+
+              lines.append("")
+
+          lines.append(f"**Total: {grand_passed}/{grand_total} passed across {len(xml_files)} platform(s) in {grand_time:.1f}s**")
+          lines.append("")
+
+          with open("reports/stealth-test-latest.md", "w") as f:
+              f.write("\n".join(lines))
+          print(f"Report: {grand_passed}/{grand_total} passed in {grand_time:.1f}s")
+          PYEOF
+
+      - name: Commit report
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git stash --include-untracked
+          git pull --rebase
+          git stash pop || true
+          git add reports/stealth-test-latest.md
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "test: update stealth test report"
+            git push
+          fi

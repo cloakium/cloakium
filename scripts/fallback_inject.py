@@ -315,15 +315,25 @@ def fallback_15():
 
 
 def fallback_24():
-    """Suppress Error.prepareStackTrace CDP detection in V8 inspector."""
+    """Suppress Error.prepareStackTrace CDP detection in V8.
+
+    Primary fix: messages.cc guard using console_delegate().
+    Defense-in-depth: value-mirror.cc guards (optional, skip if API mismatch).
+    """
+    changed = False
+
+    # Part 1 (optional): value-mirror.cc guards — only inject if the exact
+    # function signatures we expect are present (they change between versions).
     f = "v8/src/inspector/value-mirror.cc"
-    with open(f) as fh:
-        content = fh.read()
+    if os.path.isfile(f):
+        with open(f) as fh:
+            content = fh.read()
 
-    if "doesAttributeHaveObservableSideEffectOnGet" not in content:
-        return False
-
-    guard_get = """\
+        # Only inject getErrorProperty guard if the expected anchor exists and
+        # 'name' variable and 'deepBoundFunction' are accessible in that scope.
+        has_get_error = "getErrorProperty" in content and "deepBoundFunction" in content
+        if has_get_error and "skip the read to avoid triggering user code" not in content:
+            guard_get = """\
 
   // Guard: if reading "stack" and Error.prepareStackTrace is a user function,
   // skip the read to avoid triggering user code during CDP serialization.
@@ -348,8 +358,27 @@ def fallback_24():
     tryCatch.Reset();
   }
 """
+            if inject_after_pattern(
+                f,
+                r"v8::MicrotasksScope microtasksScope\(context,\s*\n\s*v8::MicrotasksScope::kDoNotRunMicrotasks\);",
+                guard_get,
+                flags=re.DOTALL,
+            ):
+                changed = True
 
-    guard_side_effect = """\
+        # Re-read after potential edit
+        with open(f) as fh:
+            content = fh.read()
+
+        # doesAttributeHaveObservableSideEffectOnGet guard — only if name param exists
+        has_side_effect_fn = "doesAttributeHaveObservableSideEffectOnGet" in content
+        # Check that 'name' is a parameter (v8::Local<v8::String> name)
+        has_name_param = bool(re.search(
+            r"doesAttributeHaveObservableSideEffectOnGet\([^)]*v8::Local<v8::String>\s+name",
+            content,
+        ))
+        if has_side_effect_fn and has_name_param and "accessing error.stack triggers FormatStackTrace" not in content:
+            guard_side_effect = """\
 
   // Stealth: accessing error.stack triggers FormatStackTrace which calls
   // user-defined Error.prepareStackTrace — observable side effect.
@@ -374,35 +403,16 @@ def fallback_24():
     }
   }
 """
+            if inject_after_pattern(
+                f,
+                r"(bool doesAttributeHaveObservableSideEffectOnGet\([^)]+\)\s*\{[^}]*?"
+                r"v8::Isolate\* isolate = v8::Isolate::GetCurrent\(\);)",
+                guard_side_effect,
+                flags=re.DOTALL,
+            ):
+                changed = True
 
-    changed = False
-
-    # Part 1: getErrorProperty — inject after MicrotasksScope line
-    if "skip the read to avoid triggering user code" not in content:
-        if inject_after_pattern(
-            f,
-            r"v8::MicrotasksScope microtasksScope\(context,\s*\n\s*v8::MicrotasksScope::kDoNotRunMicrotasks\);",
-            guard_get,
-            flags=re.DOTALL,
-        ):
-            changed = True
-
-    # Re-read after first edit
-    with open(f) as fh:
-        content = fh.read()
-
-    # Part 2: doesAttributeHaveObservableSideEffectOnGet — inject after isolate line
-    if "accessing error.stack triggers FormatStackTrace" not in content:
-        if inject_after_pattern(
-            f,
-            r"(bool doesAttributeHaveObservableSideEffectOnGet\([^)]+\)\s*\{[^}]*?"
-            r"v8::Isolate\* isolate = v8::Isolate::GetCurrent\(\);)",
-            guard_side_effect,
-            flags=re.DOTALL,
-        ):
-            changed = True
-
-    # Part 3: FormatStackTrace — skip user PST when inspector is active
+    # Part 2 (primary): FormatStackTrace — skip user PST when inspector is active
     msg_f = "v8/src/execution/messages.cc"
     with open(msg_f) as fh:
         msg_content = fh.read()

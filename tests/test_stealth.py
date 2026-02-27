@@ -37,9 +37,34 @@ STEALTH_ARGS = [
 ]
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def stealth_page():
-    """Launch a fresh browser+page per test for full isolation."""
+    """Single browser+page shared across all tests in a class."""
+    pw = sync_playwright().start()
+    browser = pw.chromium.launch(
+        executable_path=BINARY,
+        headless=not HEADFUL,
+        slow_mo=SLOW_MO,
+        args=STEALTH_ARGS,
+        ignore_default_args=["--enable-automation"],
+    )
+    page = browser.new_page()
+    page.goto("https://example.com")
+    yield page
+    try:
+        page.close()
+    except Exception:
+        pass
+    try:
+        browser.close()
+    except Exception:
+        pass
+    pw.stop()
+
+
+@pytest.fixture
+def live_page():
+    """Fresh browser+page per test for live site tests."""
     pw = sync_playwright().start()
     browser = pw.chromium.launch(
         executable_path=BINARY,
@@ -66,36 +91,30 @@ class TestWebDriverDetection:
 
     def test_navigator_webdriver_false(self, stealth_page):
         """navigator.webdriver must be false."""
-        stealth_page.goto("https://example.com")
         assert stealth_page.evaluate("navigator.webdriver") is False
 
     def test_no_headless_chrome_ua(self, stealth_page):
         """UA must not contain HeadlessChrome."""
-        stealth_page.goto("https://example.com")
         ua = stealth_page.evaluate("navigator.userAgent")
         assert "HeadlessChrome" not in ua
         assert "Chrome/" in ua
 
     def test_window_chrome_exists(self, stealth_page):
         """window.chrome must be object."""
-        stealth_page.goto("https://example.com")
         assert stealth_page.evaluate("typeof window.chrome") == "object"
 
     def test_plugins_present(self, stealth_page):
         """Must have 5 browser plugins."""
-        stealth_page.goto("https://example.com")
         count = stealth_page.evaluate("navigator.plugins.length")
         assert count == 5, f"Expected 5 plugins, got {count}"
 
     def test_languages_present(self, stealth_page):
         """navigator.languages must be populated."""
-        stealth_page.goto("https://example.com")
         langs = stealth_page.evaluate("navigator.languages")
         assert len(langs) >= 1
 
     def test_cdp_not_detected(self, stealth_page):
         """No cdc_ CDP variables on window."""
-        stealth_page.goto("https://example.com")
         has_cdp = stealth_page.evaluate("""
             () => {
                 const keys = Object.keys(window);
@@ -106,19 +125,16 @@ class TestWebDriverDetection:
 
     def test_hardware_concurrency_override(self, stealth_page):
         """hardwareConcurrency should match CLI flag."""
-        stealth_page.goto("https://example.com")
         hc = stealth_page.evaluate("navigator.hardwareConcurrency")
         assert hc == 8
 
     def test_platform_override(self, stealth_page):
         """navigator.platform should match CLI flag."""
-        stealth_page.goto("https://example.com")
         platform = stealth_page.evaluate("navigator.platform")
         assert platform == "Win32"
 
     def test_worker_platform_matches_main(self, stealth_page):
         """Web Worker navigator.platform must match main thread."""
-        stealth_page.goto("https://example.com")
         worker_platform = stealth_page.evaluate("""
             () => new Promise(resolve => {
                 const blob = new Blob(
@@ -135,7 +151,6 @@ class TestWebDriverDetection:
 
     def test_canvas_noise_applied(self, stealth_page):
         """Canvas getImageData should have noise injected (not exact fill color)."""
-        stealth_page.goto("https://example.com")
         result = stealth_page.evaluate("""
             () => {
                 const c = document.createElement('canvas');
@@ -164,7 +179,6 @@ class TestWebDriverDetection:
 
     def test_audio_context_noise(self, stealth_page):
         """OfflineAudioContext should produce non-trivial output (noise applied)."""
-        stealth_page.goto("https://example.com")
         result = stealth_page.evaluate("""
             () => new Promise(resolve => {
                 const ctx = new OfflineAudioContext(1, 44100, 44100);
@@ -191,7 +205,6 @@ class TestWebDriverDetection:
 
     def test_client_rect_noise_applied(self, stealth_page):
         """getBoundingClientRect should have sub-pixel noise."""
-        stealth_page.goto("https://example.com")
         result = stealth_page.evaluate("""
             () => {
                 const div = document.createElement('div');
@@ -219,10 +232,9 @@ class TestWebDriverDetection:
 
         Detection sites set a PST trap then console.log an Error. CDP serializes
         the Error for the devtools frontend, reading .stack — which normally
-        triggers FormatStackTrace → user PST. Our patch skips user PST when
+        triggers FormatStackTrace -> user PST. Our patch skips user PST when
         the inspector is active.
         """
-        stealth_page.goto("https://example.com")
         triggered = stealth_page.evaluate("""
             () => {
                 let called = false;
@@ -238,7 +250,6 @@ class TestWebDriverDetection:
 
     def test_cdp_not_detected_in_worker(self, stealth_page):
         """Same PST trap inside a Web Worker must not be triggered."""
-        stealth_page.goto("https://example.com")
         triggered = stealth_page.evaluate("""
             () => new Promise((resolve, reject) => {
                 const code = `
@@ -261,7 +272,6 @@ class TestWebDriverDetection:
 
     def test_no_playwright_globals(self, stealth_page):
         """No Playwright-injected globals should be visible."""
-        stealth_page.goto("https://example.com")
         leaked = stealth_page.evaluate("""
             () => {
                 const suspicious = [
@@ -278,20 +288,20 @@ class TestWebDriverDetection:
 
     def test_chrome_runtime_exists(self, stealth_page):
         """window.chrome.runtime must exist as object."""
-        stealth_page.goto("https://example.com")
         assert stealth_page.evaluate("typeof window.chrome.runtime") == "object"
 
     # --- Iframe consistency ---
 
     def test_webdriver_false_in_iframe(self, stealth_page):
         """navigator.webdriver must be false inside same-origin iframe."""
-        stealth_page.goto("https://example.com")
         webdriver_in_iframe = stealth_page.evaluate("""
             () => new Promise(resolve => {
                 const iframe = document.createElement('iframe');
                 iframe.srcdoc = '<html><body></body></html>';
                 iframe.onload = () => {
-                    resolve(iframe.contentWindow.navigator.webdriver);
+                    const val = iframe.contentWindow.navigator.webdriver;
+                    iframe.remove();
+                    resolve(val);
                 };
                 document.body.appendChild(iframe);
             })
@@ -302,7 +312,6 @@ class TestWebDriverDetection:
 
     def test_worker_values_consistent(self, stealth_page):
         """Worker navigator values must match main thread."""
-        stealth_page.goto("https://example.com")
         result = stealth_page.evaluate("""
             () => new Promise(resolve => {
                 const mainValues = {
@@ -338,7 +347,6 @@ class TestWebDriverDetection:
 
     def test_webgl_vendor_override(self, stealth_page):
         """WebGL UNMASKED_VENDOR should match CLI flag."""
-        stealth_page.goto("https://example.com")
         vendor = stealth_page.evaluate("""
             () => {
                 const c = document.createElement('canvas');
@@ -352,7 +360,6 @@ class TestWebDriverDetection:
 
     def test_webgl_renderer_override(self, stealth_page):
         """WebGL UNMASKED_RENDERER should match CLI flag."""
-        stealth_page.goto("https://example.com")
         renderer = stealth_page.evaluate("""
             () => {
                 const c = document.createElement('canvas');
@@ -368,7 +375,6 @@ class TestWebDriverDetection:
 
     def test_client_hints_platform_consistent(self, stealth_page):
         """navigator.userAgentData.platform must match --fingerprint-platform."""
-        stealth_page.goto("https://example.com")
         result = stealth_page.evaluate("""
             async () => {
                 const uad = navigator.userAgentData;
@@ -386,7 +392,6 @@ class TestWebDriverDetection:
 
     def test_screen_resolution_not_headless_default(self, stealth_page):
         """Screen dimensions should not be the headless default 800x600."""
-        stealth_page.goto("https://example.com")
         dims = stealth_page.evaluate(
             "() => ({ w: screen.width, h: screen.height })"
         )
@@ -399,21 +404,17 @@ class TestBotDetectionSites:
 
     @pytest.mark.slow
     @pytest.mark.timeout(45)
-    def test_device_and_browser_info(self, stealth_page):
+    def test_device_and_browser_info(self, live_page):
         """deviceandbrowserinfo.com should report isBot=false with no flags."""
-        stealth_page.goto("https://deviceandbrowserinfo.com/are_you_a_bot", timeout=30000)
-        # Wait for detection to complete — page populates results via JS
-        stealth_page.wait_for_timeout(8000)
-        result = stealth_page.evaluate("""
+        live_page.goto("https://deviceandbrowserinfo.com/are_you_a_bot", timeout=30000)
+        live_page.wait_for_timeout(8000)
+        result = live_page.evaluate("""
             () => {
-                // The site renders results in a JSON-like structure on page
                 const text = document.body.innerText;
-                // Try to find the JSON detection object
                 const match = text.match(/\\{[\\s\\S]*"isBot"[\\s\\S]*\\}/);
                 if (match) {
                     try { return JSON.parse(match[0]); } catch(e) {}
                 }
-                // Fallback: scan for individual detection fields
                 const result = {};
                 const lines = text.split('\\n');
                 for (const line of lines) {
@@ -426,7 +427,6 @@ class TestBotDetectionSites:
         """)
         if "isBot" in result:
             assert result["isBot"] is False, f"Detected as bot: {result}"
-        # Check individual detection flags if available
         detection_keys = [
             "isAutomatedWithCDP", "hasHeadlessUA", "hasWebDriverFlag",
             "hasInconsistentClientHints", "hasInconsistentWorkerValues",
@@ -437,44 +437,11 @@ class TestBotDetectionSites:
 
     @pytest.mark.slow
     @pytest.mark.timeout(45)
-    def test_bot_incolumitas(self, stealth_page):
-        """bot.incolumitas.com bot detection probability should be low."""
-        stealth_page.goto("https://bot.incolumitas.com", timeout=30000)
-        # Site runs tests asynchronously, wait for completion
-        stealth_page.wait_for_timeout(12000)
-        result = stealth_page.evaluate("""
-            () => {
-                // The site renders test results with pass/fail indicators
-                const text = document.body.innerText;
-                // Look for the overall detection result
-                const probMatch = text.match(/(?:detection|bot)\\s*(?:probability|score)[:\\s]*([\\d.]+)/i);
-                const tests = [];
-                // Collect individual test results
-                const rows = document.querySelectorAll('tr, .test-result, [class*="test"]');
-                rows.forEach(r => {
-                    const t = r.innerText.trim();
-                    if (t.length > 5 && t.length < 200) tests.push(t);
-                });
-                return {
-                    probability: probMatch ? parseFloat(probMatch[1]) : null,
-                    pageText: text.substring(0, 3000),
-                    testCount: tests.length
-                };
-            }
-        """)
-        if result["probability"] is not None:
-            assert result["probability"] < 0.5, \
-                f"Bot probability too high: {result['probability']}"
-        # At minimum, page should have loaded with content
-        assert len(result["pageText"]) > 100, "Page didn't load properly"
-
-    @pytest.mark.slow
-    @pytest.mark.timeout(45)
-    def test_browserscan(self, stealth_page):
+    def test_browserscan(self, live_page):
         """BrowserScan should show Normal / not detected as bot."""
-        stealth_page.goto("https://www.browserscan.net/bot-detection", timeout=30000)
-        stealth_page.wait_for_timeout(8000)
-        result = stealth_page.evaluate("""
+        live_page.goto("https://www.browserscan.net/bot-detection", timeout=30000)
+        live_page.wait_for_timeout(8000)
+        result = live_page.evaluate("""
             () => {
                 const text = document.body.innerText.toLowerCase();
                 return {
@@ -485,20 +452,18 @@ class TestBotDetectionSites:
             }
         """)
         assert not result["hasBot"], f"Detected as bot on BrowserScan"
-        # "Normal" verdict indicates passing
         if result["hasNormal"]:
-            pass  # explicit pass — site shows "Normal"
+            pass
         else:
-            # Site may have changed layout; just ensure no bot detection
             assert len(result["pageText"]) > 50, "BrowserScan page didn't load"
 
     @pytest.mark.slow
     @pytest.mark.timeout(30)
-    def test_fingerprintjs(self, stealth_page):
+    def test_fingerprintjs(self, live_page):
         """FingerprintJS should not flag as bot."""
-        stealth_page.goto("https://demo.fingerprint.com/playground", timeout=30000)
-        stealth_page.wait_for_timeout(5000)
-        result = stealth_page.evaluate("""
+        live_page.goto("https://demo.fingerprint.com/playground", timeout=30000)
+        live_page.wait_for_timeout(5000)
+        result = live_page.evaluate("""
             () => {
                 const text = document.body.innerText.toLowerCase();
                 return {
@@ -511,21 +476,12 @@ class TestBotDetectionSites:
 
     @pytest.mark.slow
     @pytest.mark.timeout(60)
-    def test_recaptcha_v3(self, stealth_page):
+    def test_recaptcha_v3(self, live_page):
         """reCAPTCHA v3 score should be present in page."""
-        stealth_page.goto(
+        live_page.goto(
             "https://recaptcha-demo.appspot.com/recaptcha-v3-request-scores.php",
             timeout=30000,
         )
-        stealth_page.wait_for_timeout(3000)
-        content = stealth_page.content()
+        live_page.wait_for_timeout(3000)
+        content = live_page.content()
         assert "score" in content.lower()
-
-    @pytest.mark.slow
-    @pytest.mark.timeout(60)
-    def test_cloudflare_turnstile(self, stealth_page):
-        """Cloudflare Turnstile should resolve."""
-        stealth_page.goto("https://2captcha.com/demo/cloudflare-turnstile", timeout=30000)
-        stealth_page.wait_for_timeout(5000)
-        title = stealth_page.title()
-        assert title

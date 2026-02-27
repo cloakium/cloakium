@@ -100,14 +100,9 @@ CONTENT_EXPORT extern const char kFingerprintGpuRenderer[];
 
 
 def fallback_02():
-    """Navigator webdriver + platform override."""
-    f = "third_party/blink/renderer/core/frame/navigator.cc"
-    with open(f) as fh:
-        content = fh.read()
-
-    # Part 1: platform override
-    platform_code = """
-  // Stealth: check CLI flag first
+    """Navigator webdriver + platform override (NavigatorBase for worker compat)."""
+    platform_code = """\
+  // Stealth: check CLI flag first (covers workers + service workers)
   const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
   if (cmd->HasSwitch("fingerprint-platform")) {
     std::string plat = cmd->GetSwitchValueASCII("fingerprint-platform");
@@ -120,25 +115,49 @@ def fallback_02():
     return String(plat);
   }
 """
-    if "fingerprint-platform" not in content:
-        content = re.sub(
-            r"(String Navigator::platform\(\) const \{)\n",
+
+    # Part 1a: platform override in NavigatorBase (workers + main thread)
+    base_f = "third_party/blink/renderer/core/execution_context/navigator_base.cc"
+    with open(base_f) as fh:
+        base_content = fh.read()
+    if "fingerprint-platform" not in base_content:
+        base_content = re.sub(
+            r"(String NavigatorBase::platform\(\) const \{)\n",
             r"\1\n" + platform_code,
-            content,
+            base_content,
             count=1,
         )
+        with open(base_f, "w") as fh:
+            fh.write(base_content)
 
-    # Part 2: webdriver() returns false
-    if "return false;" not in content.split("webdriver()")[1].split("}")[0] if "webdriver()" in content else "":
-        content = re.sub(
-            r"bool Navigator::webdriver\(\) const \{[^}]+\}",
-            "bool Navigator::webdriver() const {\n  return false;\n}",
-            content,
+    # Part 1b: ensure #include "base/command_line.h" in navigator_base.cc
+    with open(base_f) as fh:
+        base_content = fh.read()
+    if '#include "base/command_line.h"' not in base_content:
+        base_content = re.sub(
+            r'(#include "third_party/blink/renderer/core/execution_context/navigator_base.h")\n',
+            r'\1\n#include "base/command_line.h"\n',
+            base_content,
             count=1,
         )
+        with open(base_f, "w") as fh:
+            fh.write(base_content)
 
-    with open(f, "w") as fh:
-        fh.write(content)
+    # Part 2: webdriver() returns false in Navigator
+    nav_f = "third_party/blink/renderer/core/frame/navigator.cc"
+    with open(nav_f) as fh:
+        nav_content = fh.read()
+    if "webdriver()" in nav_content:
+        if "return false;" not in nav_content.split("webdriver()")[1].split("}")[0]:
+            nav_content = re.sub(
+                r"bool Navigator::webdriver\(\) const \{[^}]+\}",
+                "bool Navigator::webdriver() const {\n  return false;\n}",
+                nav_content,
+                count=1,
+            )
+            with open(nav_f, "w") as fh:
+                fh.write(nav_content)
+
     return True
 
 
@@ -295,6 +314,97 @@ def fallback_15():
     )
 
 
+def fallback_24():
+    """Suppress Error.prepareStackTrace CDP detection in V8 inspector."""
+    f = "v8/src/inspector/value-mirror.cc"
+    with open(f) as fh:
+        content = fh.read()
+
+    if "doesAttributeHaveObservableSideEffectOnGet" not in content:
+        return False
+
+    guard_get = """\
+
+  // Guard: if reading "stack" and Error.prepareStackTrace is a user function,
+  // skip the read to avoid triggering user code during CDP serialization.
+  if (name->StringEquals(toV8String(isolate, "stack"))) {
+    v8::Local<v8::Value> errorCtor;
+    if (context->Global()
+            ->Get(context, toV8String(isolate, "Error"))
+            .ToLocal(&errorCtor) &&
+        errorCtor->IsFunction()) {
+      v8::Local<v8::Value> pst;
+      if (errorCtor.As<v8::Object>()
+              ->Get(context, toV8String(isolate, "prepareStackTrace"))
+              .ToLocal(&pst) &&
+          pst->IsFunction()) {
+        v8::Local<v8::Function> pstFunc = pst.As<v8::Function>();
+        if (deepBoundFunction(pstFunc)->ScriptId() !=
+            v8::UnboundScript::kNoScriptId) {
+          return v8::MaybeLocal<v8::Value>();
+        }
+      }
+    }
+    tryCatch.Reset();
+  }
+"""
+
+    guard_side_effect = """\
+
+  // Stealth: accessing error.stack triggers FormatStackTrace which calls
+  // user-defined Error.prepareStackTrace — observable side effect.
+  if (name.As<v8::String>()->StringEquals(toV8String(isolate, "stack")) &&
+      object->IsNativeError()) {
+    v8::Local<v8::Value> errorCtor;
+    if (context->Global()
+            ->Get(context, toV8String(isolate, "Error"))
+            .ToLocal(&errorCtor) &&
+        errorCtor->IsFunction()) {
+      v8::Local<v8::Value> pst;
+      if (errorCtor.As<v8::Object>()
+              ->Get(context, toV8String(isolate, "prepareStackTrace"))
+              .ToLocal(&pst) &&
+          pst->IsFunction()) {
+        v8::Local<v8::Function> pstFunc = pst.As<v8::Function>();
+        if (deepBoundFunction(pstFunc)->ScriptId() !=
+            v8::UnboundScript::kNoScriptId) {
+          return true;
+        }
+      }
+    }
+  }
+"""
+
+    changed = False
+
+    # Part 1: getErrorProperty — inject after MicrotasksScope line
+    if "skip the read to avoid triggering user code" not in content:
+        if inject_after_pattern(
+            f,
+            r"v8::MicrotasksScope microtasksScope\(context,\s*\n\s*v8::MicrotasksScope::kDoNotRunMicrotasks\);",
+            guard_get,
+            flags=re.DOTALL,
+        ):
+            changed = True
+
+    # Re-read after first edit
+    with open(f) as fh:
+        content = fh.read()
+
+    # Part 2: doesAttributeHaveObservableSideEffectOnGet — inject after isolate line
+    if "accessing error.stack triggers FormatStackTrace" not in content:
+        if inject_after_pattern(
+            f,
+            r"(bool doesAttributeHaveObservableSideEffectOnGet\([^)]+\)\s*\{[^}]*?"
+            r"v8::Isolate\* isolate = v8::Isolate::GetCurrent\(\);)",
+            guard_side_effect,
+            flags=re.DOTALL,
+        ):
+            changed = True
+
+    return changed or "skip the read to avoid triggering user code" in content
+
+
 FALLBACKS = {
     "01-cli-switches.patch": fallback_01,
     "02-navigator-webdriver-platform.patch": fallback_02,
@@ -303,6 +413,7 @@ FALLBACKS = {
     "08-audio-noise.patch": fallback_08,
     "11-plugins-always-present.patch": fallback_11,
     "15-client-hints-platform.patch": fallback_15,
+    "24-suppress-prepareStackTrace-CDP-detection.patch": fallback_24,
 }
 
 

@@ -1,0 +1,66 @@
+diff --git a/v8/src/inspector/value-mirror.cc b/v8/src/inspector/value-mirror.cc
+index 17a507a1..6233371f 100644
+--- a/v8/src/inspector/value-mirror.cc
++++ b/v8/src/inspector/value-mirror.cc
+@@ -263,6 +263,30 @@ v8::MaybeLocal<v8::Value> getErrorProperty(v8::Local<v8::Context> context,
+   v8::TryCatch tryCatch(isolate);
+   v8::MicrotasksScope microtasksScope(context,
+                                       v8::MicrotasksScope::kDoNotRunMicrotasks);
++
++  // Guard: if reading "stack" and Error.prepareStackTrace is a user function,
++  // skip the read to avoid triggering user code during CDP serialization.
++  if (name->StringEquals(toV8String(isolate, "stack"))) {
++    v8::Local<v8::Value> errorCtor;
++    if (context->Global()
++            ->Get(context, toV8String(isolate, "Error"))
++            .ToLocal(&errorCtor) &&
++        errorCtor->IsFunction()) {
++      v8::Local<v8::Value> pst;
++      if (errorCtor.As<v8::Object>()
++              ->Get(context, toV8String(isolate, "prepareStackTrace"))
++              .ToLocal(&pst) &&
++          pst->IsFunction()) {
++        v8::Local<v8::Function> pstFunc = pst.As<v8::Function>();
++        if (deepBoundFunction(pstFunc)->ScriptId() !=
++            v8::UnboundScript::kNoScriptId) {
++          return v8::MaybeLocal<v8::Value>();
++        }
++      }
++    }
++    tryCatch.Reset();
++  }
++
+   v8::Local<v8::Value> descriptor;
+   if (!object->GetOwnPropertyDescriptor(context, name).ToLocal(&descriptor)) {
+     tryCatch.Reset();
+@@ -1487,6 +1511,30 @@ bool doesAttributeHaveObservableSideEffectOnGet(v8::Local<v8::Context> context,
+   // side-effect free, and call all getters which do not produce side effects.
+   if (!name->IsString()) return false;
+   v8::Isolate* isolate = v8::Isolate::GetCurrent();
++
++  // Stealth: accessing error.stack triggers FormatStackTrace which calls
++  // user-defined Error.prepareStackTrace — observable side effect.
++  if (name.As<v8::String>()->StringEquals(toV8String(isolate, "stack")) &&
++      object->IsNativeError()) {
++    v8::Local<v8::Value> errorCtor;
++    if (context->Global()
++            ->Get(context, toV8String(isolate, "Error"))
++            .ToLocal(&errorCtor) &&
++        errorCtor->IsFunction()) {
++      v8::Local<v8::Value> pst;
++      if (errorCtor.As<v8::Object>()
++              ->Get(context, toV8String(isolate, "prepareStackTrace"))
++              .ToLocal(&pst) &&
++          pst->IsFunction()) {
++        v8::Local<v8::Function> pstFunc = pst.As<v8::Function>();
++        if (deepBoundFunction(pstFunc)->ScriptId() !=
++            v8::UnboundScript::kNoScriptId) {
++          return true;
++        }
++      }
++    }
++  }
++
+   if (!name.As<v8::String>()->StringEquals(toV8String(isolate, "body"))) {
+     return false;
+   }

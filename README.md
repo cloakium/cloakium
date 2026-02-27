@@ -74,7 +74,7 @@ with sync_playwright() as pw:
 
 ## Patches
 
-13 patches applied at compile time to the Chromium source:
+15 patches applied at compile time to the Chromium source:
 
 | # | Patch | What it does |
 |---|-------|-------------|
@@ -91,6 +91,8 @@ with sync_playwright() as pw:
 | 11 | `plugins-always-present` | Reports 5 standard plugins in headless mode |
 | 12 | `suppress-automation-infobar` | Suppresses "Chrome is being controlled" infobar |
 | 14 | `propagate-switches-to-renderer` | Forwards `--fingerprint*` switches to renderer processes |
+| 15 | `client-hints-platform` | `navigator.userAgentData.platform` matches `--fingerprint-platform` |
+| 24 | `suppress-prepareStackTrace-CDP-detection` | Prevents `Error.prepareStackTrace` trap from detecting CDP via `console.log` |
 
 ## How it works
 

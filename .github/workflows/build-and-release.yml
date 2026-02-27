@@ -409,7 +409,6 @@ jobs:
           }
 
           needs_fallback=()
-          touch_list=()
           for patchfile in "$GITHUB_WORKSPACE/patches/"*.patch; do
             name="$(basename "$patchfile")"
             echo "Applying: $name"

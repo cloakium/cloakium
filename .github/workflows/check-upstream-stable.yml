@@ -25,29 +25,35 @@ jobs:
           echo "version=$v" >> "$GITHUB_OUTPUT"
           echo "Upstream Stable: $v"
 
-      - name: Compute compound tag for current patches
-        id: tag
-        run: |
-          set -euo pipefail
-          v="${{ steps.upstream.outputs.version }}"
-          short="$(git rev-parse --short HEAD)"
-          tag="${v}+cloakium-${short}"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "Compound tag: $tag"
-
-      - name: Check if release already exists for this tag
+      - name: Check if release already exists for this version + patches
         id: last
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag="${{ steps.tag.outputs.tag }}"
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          v="${{ steps.upstream.outputs.version }}"
+          short="$(git rev-parse --short HEAD)"
+          # Tag format: {version}+cloakium-{DDHHMM}-{shorthash}
+          # Match on version + shorthash only; ignore DDHHMM timestamp.
+          pattern="${v}+cloakium-*-${short}"
+          echo "Looking for release matching: $pattern"
+          match="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 20 \
+            --json tagName --jq ".[].tagName" \
+            | grep -F "+cloakium-" \
+            | while read -r tag; do
+                # Strip DDHHMM: extract version and shorthash
+                t_ver="${tag%%+*}"
+                t_short="${tag##*-}"
+                if [ "$t_ver" = "$v" ] && [ "$t_short" = "$short" ]; then
+                  echo "$tag"; break
+                fi
+              done || true)"
+          if [ -n "$match" ]; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "Release $tag already exists"
+            echo "Release already exists: $match"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
-            echo "No release for $tag"
+            echo "No release for $v with patches $short"
           fi
 
       - name: Dispatch build if no release exists
@@ -57,8 +63,7 @@ jobs:
         run: |
           set -euo pipefail
           v="${{ steps.upstream.outputs.version }}"
-          tag="${{ steps.tag.outputs.tag }}"
-          echo "No release for $tag — dispatching build"
+          echo "No matching release — dispatching build for $v"
           gh workflow run build-and-release.yml \
             --repo "$GITHUB_REPOSITORY" \
             -f upstream_version="$v"

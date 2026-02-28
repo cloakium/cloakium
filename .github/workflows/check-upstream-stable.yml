@@ -14,6 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 20
 
       - name: Fetch latest upstream Stable version (CfT last-known-good)
         id: upstream
@@ -36,7 +38,7 @@ jobs:
           # the report push after each build would otherwise change HEAD and
           # cause an infinite build loop.
           short="$(git log --format='%h %s' -20 \
-            | grep -v 'test: update stealth test report' \
+            | { grep -v 'test: update stealth test report' || true; } \
             | head -1 | cut -d' ' -f1)"
           # Tag format: {version}+cloakium-{DDHHMM}-{shorthash}
           # Match on version + shorthash only; ignore DDHHMM timestamp.

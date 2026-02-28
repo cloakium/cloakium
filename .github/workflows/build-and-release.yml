@@ -38,7 +38,10 @@ jobs:
               "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions.json" \
               | jq -r '.channels.Stable.version')"
           fi
-          short="$(git rev-parse --short HEAD)"
+          # Skip auto-generated test report commits so the shorthash is stable
+          short="$(git log --format='%h %s' -20 \
+            | grep -v 'test: update stealth test report' \
+            | head -1 | cut -d' ' -f1)"
           # Build number = DDHHMM in UTC so newer builds always sort higher
           build_num="$(date -u +'%d%H%M')"
           tag="${v}+cloakium-${build_num}-${short}"

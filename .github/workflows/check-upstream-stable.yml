@@ -32,7 +32,12 @@ jobs:
         run: |
           set -euo pipefail
           v="${{ steps.upstream.outputs.version }}"
-          short="$(git rev-parse --short HEAD)"
+          # Skip auto-generated test report commits when computing the hash —
+          # the report push after each build would otherwise change HEAD and
+          # cause an infinite build loop.
+          short="$(git log --format='%h %s' -20 \
+            | grep -v 'test: update stealth test report' \
+            | head -1 | cut -d' ' -f1)"
           # Tag format: {version}+cloakium-{DDHHMM}-{shorthash}
           # Match on version + shorthash only; ignore DDHHMM timestamp.
           pattern="${v}+cloakium-*-${short}"

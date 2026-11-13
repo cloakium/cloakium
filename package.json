@@ -1,0 +1,66 @@
+{
+  "name": "@cloakium/browser",
+  "version": "0.1.0",
+  "description": "Original Playwright-only browser toolkit with coherent contexts, persistent identities, explicit GeoIP resolution, and optional input pacing.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./human": {
+      "types": "./dist/human/index.d.ts",
+      "default": "./dist/human/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "docs",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "keywords": [
+    "playwright",
+    "chromium",
+    "browser",
+    "automation",
+    "humanize"
+  ],
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "peerDependencies": {
+    "mmdb-lib": ">=2.0.0",
+    "playwright-core": ">=1.64.1 <2.0.0",
+    "socks-proxy-agent": ">=10.0.0"
+  },
+  "peerDependenciesMeta": {
+    "mmdb-lib": {
+      "optional": true
+    },
+    "socks-proxy-agent": {
+      "optional": true
+    },
+    "playwright-core": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "playwright-core": "1.65.0",
+    "typescript": "7.0.2"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node tests/browser/run.mjs",
+    "test:node": "node tests/browser/run.mjs --no-bun",
+    "test:bun": "bun tests/browser/run.mjs --no-build --no-bun",
+    "test:driver": "node tests/driver/smoke.mjs",
+    "test:native": "node tests/native/smoke.mjs",
+    "verify": "node tests/verification/verify.mjs"
+  }
+}

@@ -1,0 +1,27 @@
+--- a/lib/coreBundle.js
++++ b/lib/coreBundle.js
+@@ -40136,8 +40136,22 @@
+           const message = new ConsoleMessage(null, this, event.type, void 0, args, stackTraceToLocation(event.stackTrace), event.timestamp);
+           this.browserContext.emit(BrowserContext.Events.Console, message);
+         });
+-        session.send("Runtime.enable", {}).catch((e) => {
+-        });
++        // Cloakium: derive the worker context instead of enabling the Runtime domain.
++        if (_cloakiumRuntimeDomainEnabled()) {
++          session.send("Runtime.enable", {}).catch((e) => {
++          });
++        } else {
++          session.send("Runtime.evaluate", { expression: "globalThis", serializationOptions: { serialization: "idOnly" } }).then((evaluated) => {
++            const objectId = evaluated && evaluated.result && evaluated.result.objectId;
++            const executionContextId = objectId ? Number(String(objectId).split(".")[1]) : NaN;
++            if (Number.isNaN(executionContextId))
++              return;
++            this.createExecutionContext(new CRExecutionContext(session, { id: executionContextId }));
++            if (this.browserContext._browser.majorVersion() < 143)
++              this.workerScriptLoaded();
++          }).catch(() => {
++          });
++        }
+         session.send("Runtime.runIfWaitingForDebugger").catch((e) => {
+         });
+         session.on("Inspector.targetReloadedAfterCrash", () => {

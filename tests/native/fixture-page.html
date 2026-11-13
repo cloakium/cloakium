@@ -1,0 +1,120 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>cloakium native fixture</title></head>
+<body>
+<script>
+(() => {
+  function fnv(bytes) {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < bytes.length; i++) {
+      h ^= bytes[i];
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    return h.toString(16).padStart(8, '0');
+  }
+  function fnvString(s) {
+    return fnv(new TextEncoder().encode(s));
+  }
+  function draw(canvas) {
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const gradient = ctx.createLinearGradient(0, 0, canvas.width, 0);
+    gradient.addColorStop(0, '#112233');
+    gradient.addColorStop(1, '#aabbcc');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(2, 2, 120, 20);
+    ctx.fillStyle = '#000000';
+    ctx.font = '15px sans-serif';
+    ctx.fillText('Cloakium 0123456789', 4, 50);
+    ctx.beginPath();
+    ctx.arc(200, 40, 18, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(200, 30, 60, 0.7)';
+    ctx.fill();
+  }
+  function canvasProbe() {
+    const first = document.createElement('canvas');
+    first.width = 240;
+    first.height = 80;
+    const second = document.createElement('canvas');
+    second.width = 240;
+    second.height = 80;
+    draw(first);
+    draw(second);
+    const ctx = first.getContext('2d');
+    const url1 = first.toDataURL('image/png');
+    const url2 = first.toDataURL('image/png');
+    const urlOtherCanvas = second.toDataURL('image/png');
+    const data1 = ctx.getImageData(0, 0, first.width, first.height).data;
+    const data2 = ctx.getImageData(0, 0, first.width, first.height).data;
+    const bytes1 = new Uint8Array(data1.buffer, data1.byteOffset, data1.byteLength);
+    const bytes2 = new Uint8Array(data2.buffer, data2.byteOffset, data2.byteLength);
+    return {
+      dataURLHash: fnvString(url1),
+      secondCanvasDataURLHash: fnvString(urlOtherCanvas),
+      imageDataHash: fnv(bytes1),
+      dataURLStable: url1 === url2,
+      imageDataStable: fnv(bytes1) === fnv(bytes2),
+    };
+  }
+  async function renderAudio() {
+    const ctx = new OfflineAudioContext(1, 4096, 44100);
+    const oscillator = ctx.createOscillator();
+    oscillator.type = 'sine';
+    oscillator.frequency.value = 1000;
+    const compressor = ctx.createDynamicsCompressor();
+    oscillator.connect(compressor);
+    compressor.connect(ctx.destination);
+    oscillator.start();
+    const buffer = await ctx.startRendering();
+    const first = buffer.getChannelData(0);
+    const second = buffer.getChannelData(0);
+    let stable = first.length === second.length;
+    if (stable) {
+      for (let i = 0; i < first.length; i++) {
+        if (first[i] !== second[i]) { stable = false; break; }
+      }
+    }
+    const bytes = new Uint8Array(first.buffer, first.byteOffset, first.byteLength);
+    return { hash: fnv(bytes), stable };
+  }
+  function webglProbe() {
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl');
+    if (!gl) return null;
+    const debug = gl.getExtension('WEBGL_debug_renderer_info');
+    return {
+      vendor: gl.getParameter(gl.VENDOR),
+      renderer: gl.getParameter(gl.RENDERER),
+      unmaskedVendor: debug ? gl.getParameter(debug.UNMASKED_VENDOR_WEBGL) : null,
+      unmaskedRenderer: debug ? gl.getParameter(debug.UNMASKED_RENDERER_WEBGL) : null,
+    };
+  }
+  window.__cloakium = {
+    async run() {
+      const audioA = await renderAudio();
+      const audioB = await renderAudio();
+      const response = await fetch('/headers', { cache: 'no-store' });
+      const headers = await response.json();
+      return {
+        ua: navigator.userAgent,
+        platform: navigator.platform,
+        webdriver: navigator.webdriver,
+        hardwareConcurrency: navigator.hardwareConcurrency,
+        deviceMemory: navigator.deviceMemory ?? null,
+        uad: navigator.userAgentData ? {
+          platform: navigator.userAgentData.platform,
+          mobile: navigator.userAgentData.mobile,
+          brands: navigator.userAgentData.brands,
+        } : null,
+        canvas: canvasProbe(),
+        audio: { hash: audioA.hash, stable: audioA.stable && audioB.stable, sameAcrossRenders: audioA.hash === audioB.hash },
+        webgl: webglProbe(),
+        headers,
+      };
+    },
+  };
+})();
+</script>
+</body>
+</html>

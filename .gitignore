@@ -1,0 +1,14 @@
+node_modules/
+dist/
+result
+result-*
+.direnv/
+.cache/
+artifacts/
+*.log
+__pycache__/
+*.pyc
+*.key
+.env
+.env.*
+target/

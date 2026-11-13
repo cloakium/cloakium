@@ -1,0 +1,11 @@
+--- a/lib/coreBundle.js
++++ b/lib/coreBundle.js
+@@ -36629,7 +36629,7 @@
+       // Prevents relaunching as non-admin when started from an elevated process on Windows.
+       // See https://issues.chromium.org/u/1/issues/435410220
+       "--do-not-de-elevate"
+-    ].filter(Boolean);
++    ].filter(Boolean).filter((arg) => arg !== "--enable-automation");
+   }
+ });
+ 

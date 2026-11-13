@@ -1,0 +1,115 @@
+name: Track upstream releases
+
+on:
+  schedule:
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloakium-publish
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      changed: ${{ steps.update.outputs.changed }}
+      chromium: ${{ steps.update.outputs.chromium }}
+      playwright: ${{ steps.update.outputs.playwright }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@3dc140bfc76c49fbd4dd958429132e3746bcb086 # v31.11.5
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            system-features = big-parallel kvm
+      - name: Discover stable upstream releases without write credentials
+        id: update
+        run: nix run .#maintain -- update
+      - name: Validate source replay and public API
+        if: steps.update.outputs.changed == 'true'
+        run: |
+          nix flake check . --all-systems --no-build
+          nix build .#chromium-patch-check .#playwright .#browser -L
+          nix develop . -c npm ci --ignore-scripts --no-audit --no-fund
+          nix develop . -c npm run typecheck
+          nix develop . -c npm test
+      - name: Stage only upstream pin files
+        if: steps.update.outputs.changed == 'true'
+        run: |
+          mkdir -p artifacts/candidate/nix
+          cp flake.lock upstream.json package.json package-lock.json artifacts/candidate/
+          cp nix/npm-deps-hash.nix artifacts/candidate/nix/
+      - if: steps.update.outputs.changed == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: upstream-candidate
+          path: artifacts/candidate/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Retain failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rejected-upstream-update
+          path: |
+            artifacts/
+            upstream.json
+            flake.lock
+            **/*.rej
+          if-no-files-found: ignore
+
+  propose:
+    needs: discover
+    if: github.ref == 'refs/heads/main' && needs.discover.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: cachix/install-nix-action@3dc140bfc76c49fbd4dd958429132e3746bcb086 # v31.11.5
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: upstream-candidate
+          path: artifacts/candidate
+      - name: Use trusted-main maintenance code to validate data
+        run: |
+          nix build .#maintain --out-link "$RUNNER_TEMP/maintain"
+          nix build --inputs-from . nixpkgs#jujutsu --out-link "$RUNNER_TEMP/jujutsu"
+          "$RUNNER_TEMP/maintain/bin/cloakium-maintain" validate-update --base . --candidate artifacts/candidate
+          "$RUNNER_TEMP/jujutsu/bin/jj" git init --colocate
+          "$RUNNER_TEMP/jujutsu/bin/jj" config set --repo user.name 'github-actions[bot]'
+          "$RUNNER_TEMP/jujutsu/bin/jj" config set --repo user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          cp artifacts/candidate/flake.lock artifacts/candidate/upstream.json .
+          cp artifacts/candidate/package.json artifacts/candidate/package-lock.json .
+          cp artifacts/candidate/nix/npm-deps-hash.nix nix/
+      - name: Submit candidate without running candidate code
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHROMIUM_VERSION: ${{ needs.discover.outputs.chromium }}
+          PLAYWRIGHT_VERSION: ${{ needs.discover.outputs.playwright }}
+          BASE_REVISION: ${{ github.sha }}
+        run: |
+          current=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
+          [ "$current" = "$BASE_REVISION" ]
+          gh auth setup-git
+          jj="$RUNNER_TEMP/jujutsu/bin/jj"
+          "$jj" describe -m "Update Chromium $CHROMIUM_VERSION and Playwright $PLAYWRIGHT_VERSION"
+          revision=$("$jj" log --no-graph -r @ -T commit_id)
+          candidate="updates/${revision:0:12}"
+          "$jj" bookmark set "$candidate" -r @
+          "$jj" git push --bookmark "$candidate" --allow-new
+          gh workflow run release.yml --ref main -f revision="$revision" -f candidate="$candidate"

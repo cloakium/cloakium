@@ -1,0 +1,12 @@
+--- a/lib/coreBundle.js
++++ b/lib/coreBundle.js
+@@ -25318,7 +25318,8 @@
+       context(world) {
+         if (this._page.delegate.noUtilityWorld?.())
+           world = "main";
+-        return this._contextData.get(world).contextPromise.then((contextOrDestroyedError) => {
++        const readiness = this._page.delegate.cloakiumContextsReady?.(this) || Promise.resolve();
++        return readiness.then(() => this._contextData.get(world).contextPromise).then((contextOrDestroyedError) => {
+           if (contextOrDestroyedError instanceof ExecutionContext)
+             return contextOrDestroyedError;
+           throw contextOrDestroyedError.destroyedError;

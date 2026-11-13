@@ -1,0 +1,31 @@
+--- a/third_party/blink/renderer/modules/webaudio/offline_audio_context.cc
++++ b/third_party/blink/renderer/modules/webaudio/offline_audio_context.cc
+@@ -37,6 +37,7 @@
+ #include "third_party/blink/renderer/bindings/modules/v8/v8_union_audiocontextrendersizecategory_unsignedlong.h"
+ #include "third_party/blink/renderer/core/dom/dom_exception.h"
+ #include "third_party/blink/renderer/core/execution_context/execution_context.h"
++#include "third_party/blink/renderer/core/frame/cloakium_fingerprint.h"
+ #include "third_party/blink/renderer/core/frame/local_dom_window.h"
+ #include "third_party/blink/renderer/modules/webaudio/audio_listener.h"
+ #include "third_party/blink/renderer/modules/webaudio/deferred_task_handler.h"
+@@ -583,6 +584,19 @@
+   Member<AudioBuffer> rendered_buffer = pending_render_targets_.TakeFirst();
+ 
+   CHECK(rendered_buffer);
++  // Cloakium: apply deterministic noise exactly once, at render handoff. The
++  // buffer is never mutated again on getChannelData(), so repeated reads are
++  // stable and there is no cumulative accumulation.
++  if (cloakium::IsFingerprintEnabled()) {
++    const uint64_t seed =
++        cloakium::SeedForExecutionContext(GetExecutionContext());
++    for (unsigned channel = 0; channel < rendered_buffer->numberOfChannels();
++         ++channel) {
++      auto channel_data = rendered_buffer->getChannelData(channel);
++      if (channel_data)
++        cloakium::PerturbAudioSamples(channel_data->AsSpan(), seed, channel);
++    }
++  }
+   resolver->Resolve(rendered_buffer.Get());
+ 
+   if (IsRenderComplete()) {
+

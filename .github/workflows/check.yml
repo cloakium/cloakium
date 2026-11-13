@@ -1,0 +1,52 @@
+name: Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: cachix/install-nix-action@3dc140bfc76c49fbd4dd958429132e3746bcb086 # v31.11.5
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            system-features = big-parallel kvm
+      - name: Evaluate and replay patches
+        run: |
+          nix flake check . --all-systems --no-build
+          nix build .#maintain .#playwright .#browser .#chromium-patch-check -L
+      - name: Rust checks
+        run: |
+          nix develop . -c cargo fmt --manifest-path tools/maintain/Cargo.toml -- --check
+          nix develop . -c cargo test --locked --manifest-path tools/maintain/Cargo.toml
+          nix develop . -c cargo clippy --locked --manifest-path tools/maintain/Cargo.toml --all-targets -- -D warnings
+          nix develop . -c cargo fmt --manifest-path tools/playwright-patcher/Cargo.toml -- --check
+          nix develop . -c cargo test --locked --manifest-path tools/playwright-patcher/Cargo.toml
+          nix develop . -c cargo clippy --locked --manifest-path tools/playwright-patcher/Cargo.toml --all-targets -- -D warnings
+      - name: Public API tests
+        run: |
+          nix develop . -c npm ci --ignore-scripts --no-audit --no-fund
+          nix develop . -c npm run typecheck
+          nix develop . -c npm test
+      - name: Retain diagnostics
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: check-diagnostics
+          path: |
+            artifacts/
+            **/*.rej
+          if-no-files-found: ignore

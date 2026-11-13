@@ -1,0 +1,343 @@
+//! Signed Nix cache staging as flat GitHub release assets.
+//!
+//! `nix copy` writes `nar/<file>` plus a `URL: nar/<file>` line in each
+//! `.narinfo`. GitHub release assets are flat, so the NAR is moved next to its
+//! narinfo and the URL line is rewritten. Narinfo signatures cover the store
+//! path and NAR hash, never the URL, so flattening keeps every signature valid.
+
+use std::ffi::OsStr;
+use std::fs;
+use std::path::{Component, Path, PathBuf};
+
+use anyhow::{bail, ensure, Context, Result};
+
+use crate::command::{Command, Runner, CACHE_COPY_TIMEOUT};
+use crate::util;
+
+/// GitHub rejects any single release asset at or above 2 GiB.
+pub const ASSET_LIMIT: u64 = 2 * 1024 * 1024 * 1024;
+
+const NARINFO_SUFFIX: &str = ".narinfo";
+
+/// Move every referenced NAR out of `nar/` and rewrite the narinfo URL lines.
+pub fn flatten_cache(directory: &Path) -> Result<()> {
+    let mut moved: Vec<PathBuf> = Vec::new();
+    for info in narinfo_paths(directory)? {
+        let name = asset_name(&info);
+        let contents =
+            fs::read_to_string(&info).with_context(|| format!("failed to read {name} as text"))?;
+        let url = single_url(&contents).with_context(|| format!("invalid cache URL in {name}"))?;
+        let source = PathBuf::from(&url);
+        let file_name =
+            nar_file_name(&source).with_context(|| format!("unexpected cache asset URL: {url}"))?;
+        if !moved.contains(&source) {
+            let original = directory.join(&source);
+            let metadata = fs::symlink_metadata(&original)
+                .with_context(|| format!("cache asset is missing: {url}"))?;
+            ensure!(
+                metadata.is_file() && !metadata.file_type().is_symlink(),
+                "cache asset is missing or not a regular file: {url}"
+            );
+            let target = directory.join(&file_name);
+            ensure!(
+                fs::symlink_metadata(&target).is_err(),
+                "duplicate cache asset: {}",
+                file_name.to_string_lossy()
+            );
+            fs::rename(&original, &target)
+                .with_context(|| format!("failed to move {url} to {}", target.display()))?;
+            moved.push(source.clone());
+        }
+        let flattened = rewrite_url_line(&contents, &url, &file_name.to_string_lossy());
+        fs::write(&info, flattened).with_context(|| format!("failed to rewrite {name}"))?;
+    }
+
+    let nar_directory = directory.join("nar");
+    if fs::symlink_metadata(&nar_directory).is_ok() {
+        fs::remove_dir(&nar_directory).with_context(|| {
+            format!(
+                "failed to remove {}; every NAR must be referenced by a narinfo",
+                nar_directory.display()
+            )
+        })?;
+    }
+    remove_cache_bookkeeping(directory)?;
+    Ok(())
+}
+
+/// `nix copy`, `nix store sign` and `nix store verify` create `log/` and
+/// `realisations/` inside a file cache. Neither can be a flat GitHub release
+/// asset, and neither is needed to substitute an input-addressed output.
+pub fn remove_cache_bookkeeping(directory: &Path) -> Result<()> {
+    let logs = directory.join("log");
+    if fs::symlink_metadata(&logs).is_ok() {
+        fs::remove_dir_all(&logs)
+            .with_context(|| format!("failed to remove {}", logs.display()))?;
+    }
+    // Reopening a flat cache for writing recreates an empty `nar/`; anything
+    // inside it means the cache was never flattened.
+    let nar = directory.join("nar");
+    if fs::symlink_metadata(&nar).is_ok() {
+        let mut entries =
+            fs::read_dir(&nar).with_context(|| format!("failed to list {}", nar.display()))?;
+        ensure!(
+            entries.next().is_none(),
+            "the release cache is not flattened: {} is not empty",
+            nar.display()
+        );
+        fs::remove_dir(&nar).with_context(|| format!("failed to remove {}", nar.display()))?;
+    }
+    let realisations = directory.join("realisations");
+    if fs::symlink_metadata(&realisations).is_ok() {
+        let mut entries = fs::read_dir(&realisations)
+            .with_context(|| format!("failed to list {}", realisations.display()))?;
+        ensure!(
+            entries.next().is_none(),
+            "the staged cache contains content-addressed realisations, which cannot be published as flat release assets"
+        );
+        fs::remove_dir(&realisations)
+            .with_context(|| format!("failed to remove {}", realisations.display()))?;
+    }
+    Ok(())
+}
+
+/// Copy `paths` into a fresh cache at `output`, then flatten it.
+///
+/// With a signing key the cache is signed by `nix copy`; without one it is an
+/// unsigned staging cache for the trusted publisher to sign later.
+pub fn stage_cache(
+    paths: &[PathBuf],
+    output: &Path,
+    signing_key: Option<&Path>,
+    runner: &mut dyn Runner,
+) -> Result<PathBuf> {
+    ensure!(!paths.is_empty(), "no Nix store paths were given to stage");
+    let output = util::absolute(output)?;
+    ensure!(
+        !output.exists(),
+        "refuse to reuse release directory: {}",
+        output.display()
+    );
+    let signing_key = match signing_key {
+        Some(key) => {
+            let key = util::absolute(key)?;
+            ensure!(key.is_file(), "a Nix cache signing key file is required");
+            Some(key)
+        }
+        None => None,
+    };
+    fs::create_dir_all(&output)
+        .with_context(|| format!("failed to create {}", output.display()))?;
+
+    let store_url = format!("file://{}", util::percent_encode(&output.to_string_lossy()));
+    let destination = match &signing_key {
+        Some(key) => format!(
+            "{store_url}?compression=xz&secret-key={}",
+            util::percent_encode(&key.to_string_lossy())
+        ),
+        None => format!("{store_url}?compression=xz"),
+    };
+    let description = match &signing_key {
+        Some(_) => format!("nix copy --to {store_url} (signing key redacted)"),
+        None => format!("nix copy --to {store_url}"),
+    };
+    let mut arguments = vec!["copy".to_string(), "--to".to_string(), destination];
+    arguments.extend(paths.iter().map(|path| path.display().to_string()));
+    runner.run(
+        &Command::new("nix", arguments)
+            .timeout(CACHE_COPY_TIMEOUT)
+            .describe(description),
+    )?;
+
+    flatten_cache(&output)?;
+    match signing_key {
+        Some(_) => verify_signed(&output)?,
+        None => verify_unsigned(&output)?,
+    }
+    Ok(output)
+}
+
+/// Every narinfo must carry at least one signature line.
+pub fn verify_signed(directory: &Path) -> Result<()> {
+    for info in narinfo_paths(directory)? {
+        let contents = fs::read_to_string(&info)
+            .with_context(|| format!("failed to read {}", info.display()))?;
+        ensure!(
+            contents.lines().any(signature_line),
+            "unsigned Nix cache entry: {}",
+            asset_name(&info)
+        );
+    }
+    Ok(())
+}
+
+/// The untrusted staging cache must not carry signatures at all.
+pub fn verify_unsigned(directory: &Path) -> Result<()> {
+    for info in narinfo_paths(directory)? {
+        let contents = fs::read_to_string(&info)
+            .with_context(|| format!("failed to read {}", info.display()))?;
+        ensure!(
+            !contents
+                .lines()
+                .any(|line| line.trim_end() == "Sig:" || line.starts_with("Sig: ")),
+            "unexpected signature in {}: an unsigned staging cache must not be signed",
+            asset_name(&info)
+        );
+    }
+    Ok(())
+}
+
+/// Write `SHA256SUMS` covering every other asset, in stable name order.
+pub fn write_checksums(directory: &Path) -> Result<()> {
+    let mut entries: Vec<(String, PathBuf)> = Vec::new();
+    for entry in fs::read_dir(directory)
+        .with_context(|| format!("failed to list {}", directory.display()))?
+    {
+        let entry = entry?;
+        entries.push((
+            entry.file_name().to_string_lossy().into_owned(),
+            entry.path(),
+        ));
+    }
+    entries.sort_by(|left, right| left.0.cmp(&right.0));
+
+    let mut sums = String::new();
+    for (name, path) in entries {
+        if name == "SHA256SUMS" {
+            continue;
+        }
+        let metadata =
+            fs::symlink_metadata(&path).with_context(|| format!("failed to inspect {name}"))?;
+        ensure!(
+            metadata.is_file() && !metadata.file_type().is_symlink(),
+            "release assets must be regular files: {name}"
+        );
+        ensure!(
+            is_safe_asset_name(&name),
+            "unsafe release asset filename: {name}"
+        );
+        ensure!(
+            metadata.len() < ASSET_LIMIT,
+            "asset exceeds GitHub's 2 GiB limit: {name}"
+        );
+        sums.push_str(&format!("{}  {}\n", util::digest(&path)?, name));
+    }
+    fs::write(directory.join("SHA256SUMS"), sums)
+        .with_context(|| format!("failed to write {}", directory.join("SHA256SUMS").display()))?;
+    Ok(())
+}
+
+/// Sum of every regular file below `directory`, used to check transport limits.
+pub fn total_size(directory: &Path) -> Result<u64> {
+    let mut total = 0u64;
+    let mut pending = vec![directory.to_path_buf()];
+    while let Some(current) = pending.pop() {
+        for entry in fs::read_dir(&current)
+            .with_context(|| format!("failed to list {}", current.display()))?
+        {
+            let entry = entry?;
+            let metadata = fs::symlink_metadata(entry.path())?;
+            ensure!(
+                !metadata.file_type().is_symlink(),
+                "release assets must not be symlinks: {}",
+                entry.path().display()
+            );
+            if metadata.is_dir() {
+                pending.push(entry.path());
+            } else {
+                total = total
+                    .checked_add(metadata.len())
+                    .context("release size overflow")?;
+            }
+        }
+    }
+    Ok(total)
+}
+
+pub fn narinfo_paths(directory: &Path) -> Result<Vec<PathBuf>> {
+    let mut files: Vec<PathBuf> = fs::read_dir(directory)
+        .with_context(|| format!("failed to list {}", directory.display()))?
+        .map(|entry| entry.map(|entry| entry.path()))
+        .collect::<std::io::Result<Vec<_>>>()?;
+    files.retain(|path| asset_name(path).ends_with(NARINFO_SUFFIX));
+    files.sort();
+    Ok(files)
+}
+
+fn asset_name(path: &Path) -> String {
+    path.file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
+fn single_url(contents: &str) -> Result<String> {
+    let urls: Vec<&str> = contents
+        .lines()
+        .filter_map(|line| line.strip_prefix("URL: "))
+        .filter(|value| !value.is_empty())
+        .collect();
+    match urls.as_slice() {
+        [url] => Ok((*url).to_string()),
+        _ => bail!("expected exactly one URL line, found {}", urls.len()),
+    }
+}
+
+/// Accept only `nar/<name>`: no absolute paths, no traversal, no extra
+/// components, no remote URLs.
+fn nar_file_name(source: &Path) -> Result<std::ffi::OsString> {
+    let components: Vec<Component<'_>> = source.components().collect();
+    ensure!(
+        components.len() == 2 && components[0] == Component::Normal(OsStr::new("nar")),
+        "expected nar/<name>"
+    );
+    match components[1] {
+        Component::Normal(name) => Ok(name.to_os_string()),
+        _ => bail!("expected a plain NAR file name"),
+    }
+}
+
+fn rewrite_url_line(contents: &str, url: &str, file_name: &str) -> String {
+    let expected = format!("URL: {url}");
+    let mut rewritten = String::with_capacity(contents.len());
+    let mut replaced = false;
+    for segment in contents.split_inclusive('\n') {
+        let (line, newline) = match segment.strip_suffix('\n') {
+            Some(line) => (line, "\n"),
+            None => (segment, ""),
+        };
+        let (body, carriage_return) = match line.strip_suffix('\r') {
+            Some(body) => (body, "\r"),
+            None => (line, ""),
+        };
+        if !replaced && body == expected {
+            rewritten.push_str("URL: ");
+            rewritten.push_str(file_name);
+            rewritten.push_str(carriage_return);
+            rewritten.push_str(newline);
+            replaced = true;
+        } else {
+            rewritten.push_str(segment);
+        }
+    }
+    rewritten
+}
+
+fn signature_line(line: &str) -> bool {
+    let Some(rest) = line.strip_prefix("Sig: ") else {
+        return false;
+    };
+    if rest.is_empty() || rest.chars().any(char::is_whitespace) {
+        return false;
+    }
+    match rest.split_once(':') {
+        Some((name, signature)) => !name.is_empty() && !signature.is_empty(),
+        None => false,
+    }
+}
+
+pub fn is_safe_asset_name(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+}

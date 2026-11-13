@@ -1,0 +1,27 @@
+--- a/lib/coreBundle.js
++++ b/lib/coreBundle.js
+@@ -25479,13 +25479,22 @@
+             tagPromise.resolve();
+           });
+           progress2.setAllowConcurrentOrNestedRaces(true);
+-          const lifecyclePromise = progress2.race(tagPromise).then(() => this.waitForLoadState(progress2, waitUntil));
++          let lifecyclePromise;
++          if (_cloakiumRuntimeDomainEnabled()) {
++            lifecyclePromise = progress2.race(tagPromise).then(() => this.waitForLoadState(progress2, waitUntil));
++          } else {
++            this._onClearLifecycle();
++            lifecyclePromise = this.waitForLoadState(progress2, waitUntil);
++          }
+           const contentPromise = progress2.race(context.evaluate(({ html: html2, tag: tag2 }) => {
+             document.open();
+             console.debug(tag2);
+             document.write(html2);
+             document.close();
+-          }, { html, tag }));
++          }, { html, tag })).catch((error) => {
++            if (_cloakiumRuntimeDomainEnabled())
++              throw error;
++          });
+           await Promise.all([contentPromise, lifecyclePromise]);
+           progress2.setAllowConcurrentOrNestedRaces(false);
+           return null;

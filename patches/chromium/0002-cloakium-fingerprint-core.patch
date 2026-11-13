@@ -1,0 +1,300 @@
+--- a/third_party/blink/renderer/core/frame/build.gni
++++ b/third_party/blink/renderer/core/frame/build.gni
+@@ -13,6 +13,8 @@
+   "browser_controls.h",
+   "cached_permission_status.cc",
+   "cached_permission_status.h",
++  "cloakium_fingerprint.cc",
++  "cloakium_fingerprint.h",
+   "connection_allowlist_violation_report_body.cc",
+   "connection_allowlist_violation_report_body.h",
+   "coop_access_violation_report_body.cc",
+
+--- /dev/null
++++ b/third_party/blink/renderer/core/frame/cloakium_fingerprint.h
+@@ -0,0 +1,66 @@
++// Copyright 2026 Cloakium contributors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef THIRD_PARTY_BLINK_RENDERER_CORE_FRAME_CLOAKIUM_FINGERPRINT_H_
++#define THIRD_PARTY_BLINK_RENDERER_CORE_FRAME_CLOAKIUM_FINGERPRINT_H_
++
++#include <cstddef>
++#include <cstdint>
++#include <optional>
++#include <string>
++
++#include "base/containers/span.h"
++#include "base/memory/scoped_refptr.h"
++#include "third_party/blink/renderer/core/core_export.h"
++
++namespace blink {
++
++class ExecutionContext;
++class SecurityOrigin;
++class StaticBitmapImage;
++
++namespace cloakium {
++
++// True when --fingerprint is present on the renderer command line.
++CORE_EXPORT bool IsFingerprintEnabled();
++
++// Reads --fingerprint-* switches. std::nullopt when the switch is absent or
++// its value is malformed.
++CORE_EXPORT std::optional<int> GetIntSwitch(const char* name);
++CORE_EXPORT std::optional<std::string> GetSwitchValue(const char* name);
++
++// Stable, origin-scoped seed. Same seed string + same origin => same value.
++// Origin scoping keeps noise consistent within an origin without making it a
++// cross-site identifier.
++CORE_EXPORT uint64_t SeedForOrigin(const SecurityOrigin* origin);
++CORE_EXPORT uint64_t SeedForExecutionContext(const ExecutionContext*);
++
++// Deterministic +-1 noise on the RGB bytes of an RGBA/BGRA 8-bit buffer. The
++// buffer must be a private copy: callers never mutate the backing canvas.
++CORE_EXPORT void PerturbRgbaPixels(base::span<uint8_t> pixels,
++                                  int width,
++                                  int height,
++                                  size_t bytes_per_pixel,
++                                  uint64_t seed);
++
++// Returns a perturbed copy of |image|. The original image is left untouched.
++CORE_EXPORT scoped_refptr<StaticBitmapImage> PerturbStaticBitmapImage(
++    scoped_refptr<StaticBitmapImage> image,
++    uint64_t seed);
++
++// Deterministic, inaudible sample noise applied once to a rendered audio
++// buffer. Added at render handoff, not on every read.
++CORE_EXPORT void PerturbAudioSamples(base::span<float> samples,
++                                     uint64_t seed,
++                                     unsigned channel);
++
++// Static, coherent WebGL unmasked string overrides. std::nullopt unless
++// --fingerprint-webgl-profile names a known profile.
++CORE_EXPORT std::optional<std::string> GetWebglVendorOverride();
++CORE_EXPORT std::optional<std::string> GetWebglRendererOverride();
++
++}  // namespace cloakium
++}  // namespace blink
++
++#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_FRAME_CLOAKIUM_FINGERPRINT_H_
+\ No newline at end of file
+
+--- /dev/null
++++ b/third_party/blink/renderer/core/frame/cloakium_fingerprint.cc
+@@ -0,0 +1,212 @@
++// Copyright 2026 Cloakium contributors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "third_party/blink/renderer/core/frame/cloakium_fingerprint.h"
++
++#include <algorithm>
++#include <string_view>
++#include <utility>
++
++#include "base/command_line.h"
++#include "base/strings/string_number_conversions.h"
++#include "third_party/blink/public/common/switches.h"
++#include "third_party/blink/renderer/core/execution_context/execution_context.h"
++#include "third_party/blink/renderer/platform/graphics/paint/paint_image.h"
++#include "third_party/blink/renderer/platform/graphics/static_bitmap_image.h"
++#include "third_party/blink/renderer/platform/weborigin/security_origin.h"
++#include "third_party/skia/include/core/SkBitmap.h"
++#include "third_party/skia/include/core/SkData.h"
++#include "third_party/skia/include/core/SkImageInfo.h"
++#include "third_party/skia/include/core/SkPixmap.h"
++
++namespace blink {
++namespace cloakium {
++
++namespace {
++
++constexpr uint64_t kFnvOffsetBasis = 1469598103934665603ULL;
++constexpr uint64_t kFnvPrime = 1099511628211ULL;
++
++uint64_t HashString(std::string_view value) {
++  uint64_t hash = kFnvOffsetBasis;
++  for (unsigned char byte : value) {
++    hash ^= byte;
++    hash *= kFnvPrime;
++  }
++  return hash;
++}
++
++// splitmix64 finalizer; stable across platforms and processes.
++uint64_t MixBits(uint64_t value) {
++  value += 0x9e3779b97f4a7c15ULL;
++  value = (value ^ (value >> 30)) * 0xbf58476d1ce4e5b9ULL;
++  value = (value ^ (value >> 27)) * 0x94d049bb133111ebULL;
++  return value ^ (value >> 31);
++}
++
++uint32_t PixelHash(uint64_t seed, uint32_t x, uint32_t y) {
++  uint64_t value = seed ^ (static_cast<uint64_t>(x) * 0x9e3779b97f4a7c15ULL) ^
++                   (static_cast<uint64_t>(y) * 0xc2b2ae3d27d4eb4fULL);
++  return static_cast<uint32_t>(MixBits(value) >> 32);
++}
++
++bool IsSupportedColorType(SkColorType color_type) {
++  return color_type == kRGBA_8888_SkColorType ||
++         color_type == kBGRA_8888_SkColorType;
++}
++
++std::optional<std::string> WebglProfileName() {
++  return GetSwitchValue(blink::switches::kCloakiumWebglProfile);
++}
++
++}  // namespace
++
++bool IsFingerprintEnabled() {
++  return base::CommandLine::ForCurrentProcess()->HasSwitch(
++      blink::switches::kCloakiumFingerprint);
++}
++
++std::optional<std::string> GetSwitchValue(const char* name) {
++  const base::CommandLine* command_line =
++      base::CommandLine::ForCurrentProcess();
++  if (!command_line->HasSwitch(name))
++    return std::nullopt;
++  return command_line->GetSwitchValueASCII(name);
++}
++
++std::optional<int> GetIntSwitch(const char* name) {
++  auto value = GetSwitchValue(name);
++  if (!value)
++    return std::nullopt;
++  int parsed = 0;
++  if (!base::StringToInt(*value, &parsed))
++    return std::nullopt;
++  return parsed;
++}
++
++uint64_t SeedForOrigin(const SecurityOrigin* origin) {
++  uint64_t seed = 0;
++  auto value = GetSwitchValue(blink::switches::kCloakiumFingerprint);
++  if (value && !value->empty() &&
++      !base::StringToUint64(*value, &seed)) {
++    seed = HashString(*value);
++  }
++  const uint64_t origin_hash =
++      origin ? HashString(origin->ToString().Utf8()) : 0;
++  return MixBits(seed ^ origin_hash);
++}
++
++uint64_t SeedForExecutionContext(const ExecutionContext* context) {
++  return SeedForOrigin(context ? context->GetSecurityOrigin() : nullptr);
++}
++
++void PerturbRgbaPixels(base::span<uint8_t> pixels,
++                       int width,
++                       int height,
++                       size_t bytes_per_pixel,
++                       uint64_t seed) {
++  if (!IsFingerprintEnabled() || width <= 0 || height <= 0 ||
++      bytes_per_pixel < 3) {
++    return;
++  }
++  const size_t width_size = static_cast<size_t>(width);
++  const size_t pixel_count =
++      std::min(pixels.size() / bytes_per_pixel,
++               width_size * static_cast<size_t>(height));
++  for (size_t index = 0; index < pixel_count; ++index) {
++    const uint32_t x = static_cast<uint32_t>(index % width_size);
++    const uint32_t y = static_cast<uint32_t>(index / width_size);
++    const uint32_t hash = PixelHash(seed, x, y);
++    for (size_t channel = 0; channel < 3; ++channel) {
++      const int delta =
++          static_cast<int>((hash >> (channel * 8)) % 3u) - 1;
++      if (delta == 0)
++        continue;
++      const size_t offset = index * bytes_per_pixel + channel;
++      const int value = static_cast<int>(pixels[offset]) + delta;
++      pixels[offset] = static_cast<uint8_t>(std::clamp(value, 0, 255));
++    }
++  }
++}
++
++scoped_refptr<StaticBitmapImage> PerturbStaticBitmapImage(
++    scoped_refptr<StaticBitmapImage> image,
++    uint64_t seed) {
++  if (!image || !IsFingerprintEnabled())
++    return image;
++  const PaintImage paint_image = image->PaintImageForCurrentFrame();
++  const SkImageInfo info = paint_image.GetSkImageInfo();
++  if (!IsSupportedColorType(info.colorType()) || info.width() <= 0 ||
++      info.height() <= 0) {
++    return image;
++  }
++  SkBitmap bitmap;
++  if (!bitmap.tryAllocPixels(info))
++    return image;
++  if (!paint_image.readPixels(info, bitmap.getPixels(), bitmap.rowBytes(), 0,
++                              0)) {
++    return image;
++  }
++  PerturbRgbaPixels(
++      base::span<uint8_t>(static_cast<uint8_t*>(bitmap.getPixels()),
++                          bitmap.computeByteSize()),
++      info.width(), info.height(), info.bytesPerPixel(), seed);
++  sk_sp<SkData> data =
++      SkData::MakeWithCopy(bitmap.getPixels(), bitmap.computeByteSize());
++  if (!data)
++    return image;
++  return StaticBitmapImage::Create(std::move(data), info,
++                                   image->GetHdrMetadata(),
++                                   image->Orientation());
++}
++
++void PerturbAudioSamples(base::span<float> samples,
++                         uint64_t seed,
++                         unsigned channel) {
++  if (!IsFingerprintEnabled())
++    return;
++  const uint64_t channel_seed =
++      seed ^ (static_cast<uint64_t>(channel) << 32);
++  for (size_t index = 0; index < samples.size(); ++index) {
++    const uint32_t hash = PixelHash(
++        channel_seed, static_cast<uint32_t>(index), 0x9e3779b9u);
++    const int delta = static_cast<int>(hash % 2001u) - 1000;
++    samples[index] += static_cast<float>(delta) * 1e-8f;
++  }
++}
++
++std::optional<std::string> GetWebglVendorOverride() {
++  auto profile = WebglProfileName();
++  if (!profile)
++    return std::nullopt;
++  if (*profile == "mesa-intel-uhd630")
++    return std::string("Intel");
++  if (*profile == "mesa-amd")
++    return std::string("AMD");
++  if (*profile == "swiftshader")
++    return std::string("Google Inc. (Google)");
++  return std::nullopt;
++}
++
++std::optional<std::string> GetWebglRendererOverride() {
++  auto profile = WebglProfileName();
++  if (!profile)
++    return std::nullopt;
++  if (*profile == "mesa-intel-uhd630")
++    return std::string("Mesa Intel(R) UHD Graphics 630 (CFL GT2)");
++  if (*profile == "mesa-amd") {
++    return std::string(
++        "AMD Radeon Graphics (radeonsi, gfx1030, LLVM 18.1.8, DRM 3.57, "
++        "6.8.0)");
++  }
++  if (*profile == "swiftshader") {
++    return std::string(
++        "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) "
++        "(0x0000C0DE)), SwiftShader driver)");
++  }
++  return std::nullopt;
++}
++
++}  // namespace cloakium
++}  // namespace blink
+\ No newline at end of file
+

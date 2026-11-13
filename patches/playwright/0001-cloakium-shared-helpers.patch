@@ -1,0 +1,23 @@
+--- a/lib/coreBundle.js
++++ b/lib/coreBundle.js
+@@ -38929,6 +38929,10 @@
+   }
+ });
+ 
++// Cloakium: shared patch helpers (see docs/playwright-patches.md).
++var _cloakiumRuntimeDomainEnabled = () => process.env.CLOAKIUM_RUNTIME_DOMAIN === "1";
++var _cloakiumUtilityWorldName = () => `w_${require("crypto").randomBytes(8).toString("hex")}`;
++
+ // packages/playwright-core/src/server/chromium/crPage.ts
+ function webUIHost(url3) {
+   const match = /^(?:view-source:)?(?:chrome|edge):\/*([^/?#]+)/i.exec(url3);
+@@ -39046,7 +39050,8 @@
+         this._coverage = new CRCoverage(client);
+         this._browserContext = browserContext;
+         this._page = new Page(this, browserContext);
+-        this.utilityWorldName = `__playwright_utility_world_${this._page.guid}`;
++        this.utilityWorldName = _cloakiumUtilityWorldName();
++        this._cloakiumDiscoveries = /* @__PURE__ */ new Map();
+         this._networkManager = new CRNetworkManager(this._page, null);
+         this.updateOffline();
+         this.updateExtraHTTPHeaders();

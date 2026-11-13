@@ -1,0 +1,38 @@
+--- a/third_party/blink/public/common/switches.h
++++ b/third_party/blink/public/common/switches.h
+@@ -18,6 +18,10 @@
+ BLINK_COMMON_EXPORT extern const char kAllowPreCommitInput[];
+ BLINK_COMMON_EXPORT extern const char kAsyncTouchMoveThrottleTimeMs[];
+ BLINK_COMMON_EXPORT extern const char kBlinkSettings[];
++BLINK_COMMON_EXPORT extern const char kCloakiumDeviceMemory[];
++BLINK_COMMON_EXPORT extern const char kCloakiumFingerprint[];
++BLINK_COMMON_EXPORT extern const char kCloakiumHardwareConcurrency[];
++BLINK_COMMON_EXPORT extern const char kCloakiumWebglProfile[];
+ BLINK_COMMON_EXPORT extern const char kDarkModeSettings[];
+ BLINK_COMMON_EXPORT extern const char kDataUrlInSvgUseEnabled[];
+ BLINK_COMMON_EXPORT extern const char kDefaultTileHeight[];
+
+--- a/third_party/blink/common/switches.cc
++++ b/third_party/blink/common/switches.cc
+@@ -23,6 +23,20 @@
+ // value of the enum value. Applied after other command line flags and prefs.
+ const char kBlinkSettings[] = "blink-settings";
+ 
++// Enables cloakium's native fingerprint privacy features. The value is a
++// stable seed; the same seed and origin produce identical readback noise.
++const char kCloakiumFingerprint[] = "fingerprint";
++
++// Overrides navigator.hardwareConcurrency while fingerprint mode is enabled.
++const char kCloakiumHardwareConcurrency[] =
++    "fingerprint-hardware-concurrency";
++
++// Overrides navigator.deviceMemory (in GiB) while fingerprint mode is enabled.
++const char kCloakiumDeviceMemory[] = "fingerprint-device-memory";
++
++// Selects a static, coherent WebGL unmasked vendor/renderer profile.
++const char kCloakiumWebglProfile[] = "fingerprint-webgl-profile";
++
+ // Sets dark mode settings. Format is [<param>=<value>],[<param>=<value>],...
+ // The params take either int or float values. If params are not specified,
+ // the default dark mode settings is used. Valid params are given below.
+

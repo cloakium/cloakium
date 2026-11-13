@@ -1,0 +1,24 @@
+[package]
+name = "playwright-patcher"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+description = "Deterministic, strict unified-diff applier for the Cloakium playwright-core patch set"
+license = "MIT"
+
+# Standalone crate: never inherit a workspace from a parent directory.
+[workspace]
+
+[lib]
+name = "playwright_patcher"
+path = "src/lib.rs"
+
+[[bin]]
+name = "playwright-patcher"
+path = "src/main.rs"
+
+[dependencies]
+serde_json = { version = "1.0.154", features = ["preserve_order"] }
+
+[profile.release]
+opt-level = 2

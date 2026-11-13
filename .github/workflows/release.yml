@@ -1,0 +1,278 @@
+name: Build and publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: Immutable candidate commit (empty means current main)
+        required: false
+        type: string
+      candidate:
+        description: Update branch to promote after successful verification
+        required: false
+        type: string
+      bootstrap_tag:
+        description: Existing unsigned draft from a verified local build (initial setup only)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloakium-publish
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main' && inputs.bootstrap_tag == ''
+    runs-on: ${{ fromJSON(vars.CLOAKIUM_BUILD_RUNNER || '["self-hosted","linux","x64","cloakium-chromium"]') }}
+    timeout-minutes: 720
+    outputs:
+      revision: ${{ steps.source.outputs.revision }}
+      main_revision: ${{ steps.source.outputs.main_revision }}
+      tag: ${{ steps.package.outputs.tag }}
+      cache_key: ${{ steps.package.outputs.cache_key }}
+    steps:
+      - name: Validate immutable source and restricted update diff
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_REVISION: ${{ inputs.revision }}
+          CANDIDATE: ${{ inputs.candidate }}
+        run: |
+          revision="${REQUESTED_REVISION:-$GITHUB_SHA}"
+          [[ "$revision" =~ ^[a-f0-9]{40}$ ]]
+          main=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
+          if [ -n "$CANDIDATE" ]; then
+            [[ "$CANDIDATE" =~ ^updates/[a-f0-9]{12}$ ]]
+            if [ "$main" != "$revision" ]; then
+              expected=$(gh api "repos/$GITHUB_REPOSITORY/commits/$CANDIDATE" --jq .sha)
+              [ "$revision" = "$expected" ]
+            fi
+            status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$main...$revision" --jq .status)
+            [ "$status" = ahead ] || [ "$status" = identical ]
+            gh api "repos/$GITHUB_REPOSITORY/compare/$main...$revision" --jq '.files[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/update-files"
+            while IFS= read -r file; do
+              case "$file" in
+                flake.lock|upstream.json|package.json|package-lock.json|nix/npm-deps-hash.nix) ;;
+                *) echo "Untrusted update path: $file"; exit 1 ;;
+              esac
+            done < "$RUNNER_TEMP/update-files"
+          else
+            [ "$revision" = "$main" ]
+          fi
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+          echo "main_revision=$main" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.source.outputs.main_revision }}
+          persist-credentials: false
+      - uses: cachix/install-nix-action@3dc140bfc76c49fbd4dd958429132e3746bcb086 # v31.11.5
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            system-features = big-parallel kvm
+            max-jobs = 1
+      - name: Pin trusted maintenance binary and comparison data
+        id: tools
+        run: |
+          maintain=$(nix build .#maintain --no-link --print-out-paths)
+          echo "maintain=$maintain" >> "$GITHUB_OUTPUT"
+          mkdir -p "$RUNNER_TEMP/base/nix"
+          cp flake.nix flake.lock upstream.json package.json package-lock.json "$RUNNER_TEMP/base/"
+          cp nix/npm-deps-hash.nix "$RUNNER_TEMP/base/nix/"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.source.outputs.revision }}
+          persist-credentials: false
+      - name: Check update metadata before executing it
+        if: inputs.candidate != ''
+        run: |
+          "${{ steps.tools.outputs.maintain }}/bin/cloakium-maintain" validate-update --base "$RUNNER_TEMP/base" --candidate .
+      - name: Build without write tokens or signing credentials
+        timeout-minutes: 600
+        run: nix build .#chromium .#playwright .#browser --cores 16 --max-jobs 1 -L
+      - name: Verify the actual patched browser and driver
+        env:
+          CLOAKIUM_SOURCE_REVISION: ${{ steps.source.outputs.revision }}
+        run: |
+          nix develop . -c npm ci --ignore-scripts --no-audit --no-fund
+          driver=$(nix eval --raw .#playwright.libPath)
+          rm -rf node_modules/playwright-core
+          ln -s "$driver" node_modules/playwright-core
+          browser=$(nix eval --raw .#chromium.outPath)
+          export CLOAKIUM_BINARY_PATH="$browser/bin/cloakium-chromium"
+          nix develop . -c npm run verify
+          cp artifacts/verification.json "$RUNNER_TEMP/verification.json"
+      - name: Restore immutable source after tests
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.source.outputs.revision }}
+          persist-credentials: false
+      - name: Revalidate staged metadata
+        if: inputs.candidate != ''
+        run: |
+          "${{ steps.tools.outputs.maintain }}/bin/cloakium-maintain" validate-update --base "$RUNNER_TEMP/base" --candidate .
+      - name: Export unsigned data for an isolated publisher
+        id: package
+        env:
+          REVISION: ${{ steps.source.outputs.revision }}
+        run: |
+          rm -rf artifacts/release
+          "${{ steps.tools.outputs.maintain }}/bin/cloakium-maintain" release --unsigned \
+            --revision "$REVISION" --evidence "$RUNNER_TEMP/verification.json"
+          echo "cache_key=cloakium-unsigned-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$REVISION" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          key: ${{ steps.package.outputs.cache_key }}
+          path: artifacts/release
+      - name: Retain verification diagnostics
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-diagnostics
+          path: |
+            artifacts/verification.json
+            artifacts/*.log
+          if-no-files-found: ignore
+
+  publish:
+    needs: build
+    if: always() && !cancelled() && github.ref == 'refs/heads/main' && (needs.build.result == 'success' || (needs.build.result == 'skipped' && inputs.bootstrap_tag != ''))
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: release
+    permissions:
+      contents: write
+      actions: read
+      id-token: write
+      attestations: write
+    env:
+      REVISION: ${{ needs.build.outputs.revision || inputs.revision || github.sha }}
+      BASE_REVISION: ${{ needs.build.outputs.main_revision || github.sha }}
+      TAG: ${{ needs.build.outputs.tag || inputs.bootstrap_tag }}
+      CANDIDATE: ${{ inputs.candidate }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.build.outputs.main_revision || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: cachix/install-nix-action@3dc140bfc76c49fbd4dd958429132e3746bcb086 # v31.11.5
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: inputs.bootstrap_tag == ''
+        with:
+          key: ${{ needs.build.outputs.cache_key }}
+          path: artifacts/release
+          fail-on-cache-miss: true
+      - name: Retrieve a verified local bootstrap draft
+        if: inputs.bootstrap_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test -z "$CANDIDATE"
+          [[ "$REVISION" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$TAG" =~ ^chromium-[0-9.]+-pw-[0-9.]+-[a-f0-9]{10}$ ]]
+          [ "$REVISION" = "$GITHUB_SHA" ]
+          draft=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq .draft)
+          [ "$draft" = true ]
+          mkdir -p artifacts/release
+          gh release download "$TAG" --dir artifacts/release
+      - name: Build only trusted-main publication tools
+        id: tools
+        run: |
+          maintain=$(nix build .#maintain --no-link --print-out-paths)
+          echo "maintain=$maintain" >> "$GITHUB_OUTPUT"
+          nix build --inputs-from . nixpkgs#jujutsu --out-link "$RUNNER_TEMP/jujutsu"
+      - name: Reject a stale build before signing or publishing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          current=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
+          [ "$current" = "$BASE_REVISION" ] || [ "$current" = "$REVISION" ]
+          if [ -n "$CANDIDATE" ] && [ "$current" != "$REVISION" ]; then
+            expected=$(gh api "repos/$GITHUB_REPOSITORY/commits/$CANDIDATE" --jq .sha)
+            [ "$expected" = "$REVISION" ]
+          fi
+      - name: Validate and sign data without executing candidate code
+        env:
+          NIX_SIGNING_KEY: ${{ secrets.NIX_SIGNING_KEY }}
+        run: |
+          test -n "$NIX_SIGNING_KEY"
+          umask 077
+          printf '%s' "$NIX_SIGNING_KEY" > "$RUNNER_TEMP/cloakium-signing.key"
+          "${{ steps.tools.outputs.maintain }}/bin/cloakium-maintain" sign-release \
+            --input artifacts/release --revision "$REVISION" \
+            --signing-key "$RUNNER_TEMP/cloakium-signing.key" --public-key cache-public-key.txt
+      - name: Attest release checksums
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: artifacts/release/SHA256SUMS
+      - name: Stage or resume a draft release
+        id: draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          refs=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$TAG" --jq '.[].ref')
+          if ! grep -Fxq "refs/tags/$TAG" <<< "$refs"; then
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f "ref=refs/tags/$TAG" -f "sha=$REVISION" --silent
+          fi
+          target=$(gh api "repos/$GITHUB_REPOSITORY/commits/$TAG" --jq .sha)
+          [ "$target" = "$REVISION" ]
+          if gh release view "$TAG" --json isDraft > "$RUNNER_TEMP/existing-release.json"; then
+            if [ "$(jq -r .isDraft "$RUNNER_TEMP/existing-release.json")" = false ]; then
+              mkdir -p "$RUNNER_TEMP/published"
+              gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > "$RUNNER_TEMP/published/release.json"
+              gh release download "$TAG" --pattern SHA256SUMS --pattern manifest.json --dir "$RUNNER_TEMP/published" --clobber
+              "${{ steps.tools.outputs.maintain }}/bin/cloakium-maintain" verify-publication \
+                --release-json "$RUNNER_TEMP/published/release.json" \
+                --checksums "$RUNNER_TEMP/published/SHA256SUMS" \
+                --manifest "$RUNNER_TEMP/published/manifest.json" --revision "$REVISION"
+              echo "already_published=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          else
+            gh release create "$TAG" --target "$REVISION" --draft --title "$TAG" \
+              --notes-file artifacts/release/release-notes.md
+          fi
+          gh release upload "$TAG" artifacts/release/* --clobber
+          echo "already_published=false" >> "$GITHUB_OUTPUT"
+      - name: Promote the verified candidate with freshness protection
+        if: inputs.candidate != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          current=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
+          if [ "$current" = "$REVISION" ]; then exit 0; fi
+          [ "$current" = "$BASE_REVISION" ]
+          gh auth setup-git
+          jj="$RUNNER_TEMP/jujutsu/bin/jj"
+          "$jj" git init --colocate
+          "$jj" config set --repo user.name 'github-actions[bot]'
+          "$jj" config set --repo user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          "$jj" git fetch
+          fetched=$("$jj" log --no-graph -r main@origin -T commit_id)
+          [ "$fetched" = "$BASE_REVISION" ]
+          "$jj" bookmark set main -r "$REVISION"
+          "$jj" git push --bookmark main
+      - name: Publish only the complete verified release
+        if: steps.draft.outputs.already_published != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          current=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
+          [ "$current" = "$REVISION" ]
+          gh release edit "$TAG" --draft=false --latest
+      - name: Remove successfully integrated update branch
+        if: inputs.candidate != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$CANDIDATE" --silent; then
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$CANDIDATE"
+          fi
+      - name: Remove signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/cloakium-signing.key"

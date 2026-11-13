@@ -1,0 +1,25 @@
+--- a/content/browser/renderer_host/render_process_host_impl.cc
++++ b/content/browser/renderer_host/render_process_host_impl.cc
+@@ -3837,6 +3837,21 @@
+       *base::CommandLine::ForCurrentProcess();
+   PropagateBrowserCommandLineToRenderer(browser_command_line, command_line);
+ 
++  // Cloakium: forward the fingerprint switches to Blink. Only these switches
++  // are propagated; no OS or TLS identity is spoofed.
++  static constexpr const char* kCloakiumSwitches[] = {
++      blink::switches::kCloakiumFingerprint,
++      blink::switches::kCloakiumHardwareConcurrency,
++      blink::switches::kCloakiumDeviceMemory,
++      blink::switches::kCloakiumWebglProfile,
++  };
++  for (const char* switch_name : kCloakiumSwitches) {
++    if (browser_command_line.HasSwitch(switch_name)) {
++      command_line->AppendSwitchNative(
++          switch_name, browser_command_line.GetSwitchValueNative(switch_name));
++    }
++  }
++
+   // Pass on the browser locale.
+   const std::string locale =
+       GetContentClient()->browser()->GetApplicationLocale();
+

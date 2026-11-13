@@ -1,0 +1,25 @@
+--- a/components/embedder_support/user_agent_utils.cc
++++ b/components/embedder_support/user_agent_utils.cc
+@@ -29,6 +29,7 @@
+ #include "components/version_info/version_info.h"
+ #include "net/http/http_util.h"
+ #include "third_party/blink/public/common/features.h"
++#include "third_party/blink/public/common/switches.h"
+ #include "third_party/blink/public/common/user_agent/user_agent_metadata.h"
+ 
+ #if BUILDFLAG(IS_WIN)
+@@ -446,7 +447,12 @@
+ // depending on the Reduce User-Agent reduction phase features.
+ std::string GetUserAgentInternal() {
+   std::string product = GetProductAndVersion();
+-  if (base::CommandLine::ForCurrentProcess()->HasSwitch(kHeadless)) {
++  // Cloakium: keep the UA free of the "Headless" token in fingerprint mode so
++  // the HTTP User-Agent, Sec-CH-UA* client hints and navigator.userAgentData
++  // describe the same native (Linux) platform and branding.
++  if (base::CommandLine::ForCurrentProcess()->HasSwitch(kHeadless) &&
++      !base::CommandLine::ForCurrentProcess()->HasSwitch(
++          blink::switches::kCloakiumFingerprint)) {
+     product.insert(0, "Headless");
+   }
+ 
+

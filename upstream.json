@@ -1,0 +1,12 @@
+{
+  "playwright": {
+    "version": "1.65.0",
+    "url": "https://registry.npmjs.org/playwright-core/-/playwright-core-1.65.0.tgz",
+    "hash": "sha256-MVJHxVp5PKdgsvBb3O4OalP9ZbHyLR096DI8jJOVrdM=",
+    "chromiumVersion": "158.0.8127.18",
+    "browserRevision": "1254"
+  },
+  "chromium": {
+    "version": "157.0.8103.50"
+  }
+}

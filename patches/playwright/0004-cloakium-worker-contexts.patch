@@ -1,0 +1,20 @@
+--- a/lib/coreBundle.js
++++ b/lib/coreBundle.js
+@@ -39708,7 +39708,16 @@
+           session.on("Inspector.workerScriptLoaded", () => worker.workerScriptLoaded());
+         else
+           worker.workerScriptLoaded();
+-        session._sendMayFail("Runtime.enable");
++        if (_cloakiumRuntimeDomainEnabled()) {
++          session._sendMayFail("Runtime.enable");
++        } else {
++          session._sendMayFail("Runtime.evaluate", { expression: "globalThis", serializationOptions: { serialization: "idOnly" } }).then((evaluated) => {
++            const objectId = evaluated && evaluated.result && evaluated.result.objectId;
++            const executionContextId = objectId ? Number(String(objectId).split(".")[1]) : NaN;
++            if (!Number.isNaN(executionContextId))
++              worker.createExecutionContext(new CRExecutionContext(session, { id: executionContextId }));
++          });
++        }
+         const options = this._crPage._browserContext._options;
+         if (options.userAgent || options.locale)
+           this._updateUserAgent(session).catch(() => {

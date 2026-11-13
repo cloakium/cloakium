@@ -1,0 +1,159 @@
+--- a/lib/coreBundle.js
++++ b/lib/coreBundle.js
+@@ -39178,6 +39178,22 @@
+       async exposePlaywrightBinding() {
+         await this._forAllFrameSessions((frame) => frame.exposePlaywrightBinding());
+       }
++      cloakiumContextsReady(frame) {
++        const pending = this._cloakiumDiscoveries.get(frame);
++        if (pending)
++          return pending;
++        // A document swap invalidates the old context even when the
++        // navigation event was missed or arrived out of order.
++        if (frame._cloakiumDocument === frame._currentDocument && frame.existingContext("main"))
++          return null;
++        if (frame._isDetached())
++          return null;
++        try {
++          return this._sessionForFrame(frame)._discoverFrameContexts(frame);
++        } catch (e) {
++          return null;
++        }
++      }
+       async removeInitScripts(initScripts) {
+         await this._forAllFrameSessions((frame) => frame._removeEvaluatesOnNewDocument(initScripts));
+       }
+@@ -39376,13 +39392,6 @@
+             this._bufferedAttachedToTargetEvents = void 0;
+             for (const event of attachedToTargetEvents)
+               this._onAttachedToTarget(this._client, event);
+-            for (const frame of localFrames) {
+-              this._client._sendMayFail("Page.createIsolatedWorld", {
+-                frameId: frame._id,
+-                grantUniveralAccess: true,
+-                worldName: this._crPage.utilityWorldName
+-              });
+-            }
+             const isInitialEmptyPage = this._isMainFrame() && (this._page.mainFrame().url() === ":" || this._page.mainFrame().url() === "");
+             if (isInitialEmptyPage) {
+               lifecycleEventsEnabled.catch((e) => {
+@@ -39393,10 +39402,14 @@
+               this._firstNonInitialNavigationCommittedFulfill();
+               this._eventListeners.push(eventsHelper.addEventListener(this._client, "Page.lifecycleEvent", (event) => this._onLifecycleEvent(event)));
+             }
++            // Discovery is awaited by _initialize, but listeners above must be
++            // registered synchronously: the initial document's lifecycle events
++            // arrive right after Page.getFrameTree.
++            return Promise.all(localFrames.map((frame) => this._discoverFrameContexts(frame)));
+           }),
+           this._client.send("Log.enable", {}),
+           lifecycleEventsEnabled = this._client.send("Page.setLifecycleEventsEnabled", { enabled: true }),
+-          this._client.send("Runtime.enable", {}),
++          ..._cloakiumRuntimeDomainEnabled() ? [this._client.send("Runtime.enable", {})] : [],
+           this._client.send("Page.addScriptToEvaluateOnNewDocument", {
+             source: "",
+             worldName: this._crPage.utilityWorldName
+@@ -39453,8 +39466,7 @@
+           for (let attempt = 0; attempt < 10; ++attempt) {
+             if ([...this._contextIdToContext.values()].some((context) => context.world === "main"))
+               break;
+-            await this._client._sendMayFail("Runtime.disable");
+-            await this._client._sendMayFail("Runtime.enable");
++            await this._discoverFrameContexts(this._crPage._page.mainFrame());
+             await new Promise((f) => setTimeout(f, 250));
+           }
+         }
+@@ -39523,12 +39535,78 @@
+         }
+         this._page.frameManager.frameAttached(frameId, parentFrameId);
+       }
++      _discoverFrameContexts(frame) {
++        const existing = this._crPage._cloakiumDiscoveries.get(frame);
++        if (existing)
++          return existing;
++        const promise = this._cloakiumDiscoverFrameContexts(frame).catch(() => {
++        }).then(() => {
++          if (this._crPage._cloakiumDiscoveries.get(frame) === promise)
++            this._crPage._cloakiumDiscoveries.delete(frame);
++        });
++        this._crPage._cloakiumDiscoveries.set(frame, promise);
++        return promise;
++      }
++      async _cloakiumDiscoverFrameContexts(frame) {
++        if (_cloakiumRuntimeDomainEnabled() || frame._isDetached())
++          return;
++        const worldName = this._crPage.utilityWorldName;
++        // A commit can land while the previous document's context is still
++        // tearing down, so a single attempt may observe no context at all.
++        for (let attempt = 0; attempt < 20; ++attempt) {
++          if (frame._isDetached())
++            return;
++          const [utilityWorld, mainWorld] = await Promise.all([
++            this._client.send("Page.createIsolatedWorld", { frameId: frame._id, grantUniveralAccess: true, worldName }).catch(() => null),
++            this._cloakiumResolveMainWorldId(frame).catch(() => null)
++          ]);
++          if (utilityWorld && typeof utilityWorld.executionContextId === "number")
++            this._onExecutionContextCreated({ id: utilityWorld.executionContextId, name: worldName, origin: "", uniqueId: "", auxData: { isDefault: false, type: "isolated", frameId: frame._id } });
++          if (typeof mainWorld === "number") {
++            this._onExecutionContextCreated({ id: mainWorld, name: "", origin: "", uniqueId: "", auxData: { isDefault: true, type: "default", frameId: frame._id } });
++            frame._cloakiumDocument = frame._currentDocument;
++            if (this._crPage._browserContext.needsPlaywrightBinding())
++              await this._client.send("Runtime.addBinding", { name: PageBinding.kBindingName, executionContextId: mainWorld }).catch(() => {
++              });
++            return;
++          }
++          await new Promise((resolve) => setTimeout(resolve, attempt < 4 ? 5 : 25));
++        }
++      }
++      async _cloakiumResolveMainWorldId(frame) {
++        let objectId = null;
++        if (frame._id === this._targetId) {
++          const evaluated = await this._client.send("Runtime.evaluate", { expression: "globalThis", serializationOptions: { serialization: "idOnly" } });
++          objectId = evaluated && evaluated.result && evaluated.result.objectId;
++        } else {
++          const owner = await this._client.send("DOM.getFrameOwner", { frameId: frame._id }).catch(() => null);
++          if (!owner || !owner.backendNodeId)
++            return null;
++          const described = await this._client.send("DOM.describeNode", { backendNodeId: owner.backendNodeId, depth: 1 }).catch(() => null);
++          const documentBackendId = described && described.node && described.node.contentDocument && described.node.contentDocument.backendNodeId;
++          if (!documentBackendId)
++            return null;
++          const resolved = await this._client.send("DOM.resolveNode", { backendNodeId: documentBackendId }).catch(() => null);
++          objectId = resolved && resolved.object && resolved.object.objectId;
++        }
++        const id = objectId ? Number(String(objectId).split(".")[1]) : NaN;
++        return Number.isNaN(id) ? null : id;
++      }
+       _onFrameNavigated(framePayload, initial) {
+         if (this._eventBelongsToStaleFrame(framePayload.id))
+           return;
+         const frame = this._page.frameManager.frame(framePayload.id);
++        const previousMain = frame.existingContext("main");
++        const previousUtility = frame.existingContext("utility");
+         frame._failInflightRequests(/* @__PURE__ */ new Set([framePayload.loaderId, frame.pendingDocument()?.documentId]));
+         this._page.frameManager.frameCommittedNewDocumentNavigation(framePayload.id, framePayload.url + (framePayload.urlFragment || ""), framePayload.name || "", framePayload.loaderId, initial);
++        // The previous document's contexts are unusable from here on. Dropping
++        // them keeps Frame.context() waiting for the fresh registration instead
++        // of handing out a destroyed context.
++        if (previousMain)
++          frame.contextDestroyed(previousMain);
++        if (previousUtility)
++          frame.contextDestroyed(previousUtility);
+         if (!initial)
+           this._firstNonInitialNavigationCommittedFulfill();
+       }
+@@ -39884,6 +39962,14 @@
+       }
+       async exposePlaywrightBinding() {
+         await this._client.send("Runtime.addBinding", { name: PageBinding.kBindingName });
++        if (_cloakiumRuntimeDomainEnabled())
++          return;
++        for (const [executionContextId, context] of this._contextIdToContext) {
++          if (context.world !== "main")
++            continue;
++          await this._client.send("Runtime.addBinding", { name: PageBinding.kBindingName, executionContextId }).catch(() => {
++          });
++        }
+       }
+       async _getContentFrame(handle) {
+         const nodeInfo = await this._client.send("DOM.describeNode", {

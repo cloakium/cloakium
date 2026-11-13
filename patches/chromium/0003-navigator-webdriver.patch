@@ -1,0 +1,24 @@
+--- a/third_party/blink/renderer/core/frame/navigator.cc
++++ b/third_party/blink/renderer/core/frame/navigator.cc
+@@ -23,6 +23,8 @@
+ 
+ #include "third_party/blink/renderer/core/frame/navigator.h"
+ 
++#include "third_party/blink/renderer/core/frame/cloakium_fingerprint.h"
++
+ #include "third_party/blink/renderer/bindings/core/v8/script_controller.h"
+ #include "third_party/blink/renderer/core/dom/document.h"
+ #include "third_party/blink/renderer/core/execution_context/navigator_base.h"
+@@ -79,6 +81,11 @@
+ }
+ 
+ bool Navigator::webdriver() const {
++  // Cloakium: automation is still fully functional, but the page-visible
++  // signal is suppressed in fingerprint mode. No JS getter is involved.
++  if (cloakium::IsFingerprintEnabled())
++    return false;
++
+   if (RuntimeEnabledFeatures::AutomationControlledEnabled())
+     return true;
+ 
+

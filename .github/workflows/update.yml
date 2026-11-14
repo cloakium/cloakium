@@ -91,8 +91,8 @@ jobs:
           nix build --inputs-from . nixpkgs#jujutsu --out-link "$RUNNER_TEMP/jujutsu"
           "$RUNNER_TEMP/maintain/bin/cloakium-maintain" validate-update --base . --candidate artifacts/candidate
           "$RUNNER_TEMP/jujutsu/bin/jj" git init --colocate
-          "$RUNNER_TEMP/jujutsu/bin/jj" config set --repo user.name 'github-actions[bot]'
-          "$RUNNER_TEMP/jujutsu/bin/jj" config set --repo user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          "$RUNNER_TEMP/jujutsu/bin/jj" config set --repo user.name '"github-actions[bot]"'
+          "$RUNNER_TEMP/jujutsu/bin/jj" config set --repo user.email '"41898282+github-actions[bot]@users.noreply.github.com"'
           cp artifacts/candidate/flake.lock artifacts/candidate/upstream.json .
           cp artifacts/candidate/package.json artifacts/candidate/package-lock.json .
           cp artifacts/candidate/nix/npm-deps-hash.nix nix/

@@ -352,8 +352,8 @@ jobs:
           gh auth setup-git
           jj="$RUNNER_TEMP/jujutsu/bin/jj"
           "$jj" git init --colocate
-          "$jj" config set --repo user.name 'github-actions[bot]'
-          "$jj" config set --repo user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          "$jj" config set --repo user.name '"github-actions[bot]"'
+          "$jj" config set --repo user.email '"41898282+github-actions[bot]@users.noreply.github.com"'
           "$jj" git fetch
           fetched=$("$jj" log --no-graph -r main@origin -T commit_id)
           [ "$fetched" = "$BASE_REVISION" ]

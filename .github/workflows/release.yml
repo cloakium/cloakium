@@ -175,7 +175,7 @@ jobs:
           [[ "$REVISION" =~ ^[a-f0-9]{40}$ ]]
           [[ "$TAG" =~ ^chromium-[0-9.]+-pw-[0-9.]+-[a-f0-9]{10}$ ]]
           [ "$REVISION" = "$GITHUB_SHA" ]
-          draft=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq .draft)
+          draft=$(gh release view "$TAG" --json isDraft --jq .isDraft)
           [ "$draft" = true ]
           mkdir -p artifacts/release
           gh release download "$TAG" --dir artifacts/release

@@ -19,3 +19,16 @@ The signing key belongs in the `release` environment's `NIX_SIGNING_KEY` secret.
 Restrict that environment to workflow runs from `main`.
 Only its public key is committed. Treat a key compromise as a release incident:
 rotate the key, update the flake's trusted public key and notify consumers.
+
+Release checksums also receive a public Sigstore keyless signature bound to the
+`release.yml` workflow on `main`. Its bundle is the small `release-provenance`
+workflow artifact; the public transparency log retains the signing record. This
+does not require GitHub's separately gated attestation-storage API.
+
+Verify a downloaded bundle and checksum file with:
+
+```sh
+cosign verify-blob SHA256SUMS --bundle SHA256SUMS.sigstore.json \
+  --certificate-identity https://github.com/cloakium/cloakium/.github/workflows/release.yml@refs/heads/main \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```

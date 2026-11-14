@@ -182,6 +182,36 @@ jobs:
       - name: Build without write tokens or signing credentials
         timeout-minutes: 600
         run: nix build .#chromium .#playwright .#browser --cores 16 --max-jobs 1 -L
+      - name: Permit the browser's namespace sandbox on restricted hosted kernels
+        id: userns
+        if: runner.environment == 'github-hosted'
+        run: |
+          if unshare --user --map-current-user true 2>/dev/null; then exit 0; fi
+          restriction=$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || true)
+          if [ "$restriction" != 1 ]; then
+            echo 'User namespaces are unavailable without an AppArmor restriction to configure.' >&2
+            exit 1
+          fi
+          command -v apparmor_parser
+          unwrapped=$(nix eval --raw .#chromium-unwrapped.outPath)
+          browser=$(nix eval --raw .#chromium.outPath)
+          elf="$unwrapped/libexec/chromium/chromium"
+          test -x "$elf"
+          grep -qF "$elf" "$browser/bin/cloakium-chromium"
+          name="cloakium-chromium-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          profile="/etc/apparmor.d/$name"
+          printf 'abi <abi/4.0>,\ninclude <tunables/global>\nprofile %s "%s" flags=(default_allow) {\n  userns,\n}\n' \
+            "$name" "$elf" | sudo -n tee "$profile" >/dev/null
+          sudo -n apparmor_parser -r "$profile"
+          echo "profile=$profile" >> "$GITHUB_OUTPUT"
+          log="$RUNNER_TEMP/sandbox-probe.log"
+          if ! timeout --kill-after=5s 45 "$browser/bin/cloakium-chromium" --headless \
+              --no-first-run --no-default-browser-check --user-data-dir="$RUNNER_TEMP/sandbox-probe" \
+              --dump-dom 'data:text/html,<title>cloakium sandbox probe</title>' > "$log" 2>&1; then
+            cat "$log"
+            exit 1
+          fi
+          grep -qF '<title>cloakium sandbox probe</title>' "$log"
       - name: Verify the actual patched browser and driver
         env:
           CLOAKIUM_SOURCE_REVISION: ${{ steps.source.outputs.revision }}
@@ -194,6 +224,13 @@ jobs:
           export CLOAKIUM_BINARY_PATH="$browser/bin/cloakium-chromium"
           nix develop . -c npm run verify
           cp artifacts/verification.json "$RUNNER_TEMP/verification.json"
+      - name: Remove the temporary browser AppArmor profile
+        if: always() && steps.userns.outputs.profile != ''
+        env:
+          PROFILE: ${{ steps.userns.outputs.profile }}
+        run: |
+          sudo -n apparmor_parser -R "$PROFILE"
+          sudo -n rm -f "$PROFILE"
       - name: Restore immutable source after tests
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

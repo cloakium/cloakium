@@ -43,6 +43,12 @@ signatures are already available in the cache. It imports that closure without
 a build fallback. A new native derivation still requires the large builder;
 the workflow never attempts a cold Chromium compile on a small hosted runner.
 
+Hosted Ubuntu kernels can restrict unprivileged user namespaces through AppArmor.
+The release job temporarily permits namespace creation for the exact Chromium
+ELF path, not all applications. It does not disable AppArmor, change kernel-wide
+restrictions, or disable Chromium's sandbox. Runtime tests still require working
+PID/network namespaces and seccomp; the temporary profile is removed afterward.
+
 ## Signing
 
 Generate one binary-cache key pair through the flake's Nix environment:

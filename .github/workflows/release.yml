@@ -24,9 +24,90 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
+  prepare:
     if: github.ref == 'refs/heads/main' && inputs.bootstrap_tag == ''
-    runs-on: ${{ fromJSON(vars.CLOAKIUM_BUILD_RUNNER || '["self-hosted","linux","x64","cloakium-chromium"]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      runner: ${{ steps.cache.outputs.runner }}
+      cached: ${{ steps.cache.outputs.cached }}
+      native: ${{ steps.cache.outputs.native }}
+    steps:
+      - name: Resolve trusted source before cache inspection
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_REVISION: ${{ inputs.revision }}
+          CANDIDATE: ${{ inputs.candidate }}
+        run: |
+          revision="${REQUESTED_REVISION:-$GITHUB_SHA}"
+          [[ "$revision" =~ ^[a-f0-9]{40}$ ]]
+          main=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
+          if [ -n "$CANDIDATE" ]; then
+            [[ "$CANDIDATE" =~ ^updates/[a-f0-9]{12}$ ]]
+            expected=$(gh api "repos/$GITHUB_REPOSITORY/commits/$CANDIDATE" --jq .sha)
+            [ "$revision" = "$expected" ]
+            status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$main...$revision" --jq .status)
+            [ "$status" = ahead ] || [ "$status" = identical ]
+            gh api "repos/$GITHUB_REPOSITORY/compare/$main...$revision" --jq '.files[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/update-files"
+            while IFS= read -r file; do
+              case "$file" in
+                flake.lock|upstream.json|package.json|package-lock.json|nix/npm-deps-hash.nix) ;;
+                *) echo "Untrusted update path: $file"; exit 1 ;;
+              esac
+            done < "$RUNNER_TEMP/update-files"
+          else
+            [ "$revision" = "$main" ]
+          fi
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+          echo "main=$main" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.source.outputs.main }}
+          persist-credentials: false
+      - uses: cachix/install-nix-action@3dc140bfc76c49fbd4dd958429132e3746bcb086 # v31.11.5
+      - name: Pin metadata validation and baseline
+        id: tools
+        run: |
+          maintain=$(nix build .#maintain --no-link --print-out-paths)
+          echo "maintain=$maintain" >> "$GITHUB_OUTPUT"
+          mkdir -p "$RUNNER_TEMP/base/nix"
+          cp flake.nix flake.lock upstream.json package.json package-lock.json "$RUNNER_TEMP/base/"
+          cp nix/npm-deps-hash.nix "$RUNNER_TEMP/base/nix/"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.source.outputs.revision }}
+          persist-credentials: false
+      - name: Validate candidate metadata
+        if: inputs.candidate != ''
+        run: |
+          "${{ steps.tools.outputs.maintain }}/bin/cloakium-maintain" validate-update --base "$RUNNER_TEMP/base" --candidate .
+      - name: Select a cached hosted run or native builder
+        id: cache
+        env:
+          SYSTEM: ${{ vars.CLOAKIUM_SYSTEM || 'x86_64-linux' }}
+          NATIVE_RUNNER: ${{ vars.CLOAKIUM_BUILD_RUNNER || '["self-hosted","linux","x64","cloakium-chromium"]' }}
+        run: |
+          case "$SYSTEM" in x86_64-linux|aarch64-linux) ;; *) exit 1 ;; esac
+          native=$(nix eval --raw ".#packages.$SYSTEM.chromium.outPath")
+          key=$(cat cache-public-key.txt)
+          cache=https://github.com/cloakium/cloakium/releases/latest/download
+          if timeout 600 nix store verify --store "$cache" --recursive --no-contents --sigs-needed 1 \
+              --option trusted-public-keys "$key" "$native" > "$RUNNER_TEMP/cache-probe.log" 2>&1; then
+            if [ "$SYSTEM" = aarch64-linux ]; then runner='["ubuntu-24.04-arm"]'; else runner='["ubuntu-latest"]'; fi
+            echo 'cached=true' >> "$GITHUB_OUTPUT"
+          else
+            runner="$NATIVE_RUNNER"
+            echo 'cached=false' >> "$GITHUB_OUTPUT"
+            echo 'Native cache miss: a registered large builder is required.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "runner=$runner" >> "$GITHUB_OUTPUT"
+          echo "native=$native" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    if: github.ref == 'refs/heads/main' && inputs.bootstrap_tag == ''
+    runs-on: ${{ fromJSON(needs.prepare.outputs.runner) }}
     timeout-minutes: 720
     outputs:
       revision: ${{ steps.source.outputs.revision }}
@@ -90,6 +171,14 @@ jobs:
         if: inputs.candidate != ''
         run: |
           "${{ steps.tools.outputs.maintain }}/bin/cloakium-maintain" validate-update --base "$RUNNER_TEMP/base" --candidate .
+      - name: Import verified native cache without a compiler fallback
+        if: needs.prepare.outputs.cached == 'true'
+        run: |
+          native=$(nix eval --raw .#chromium.outPath)
+          [ "$native" = '${{ needs.prepare.outputs.native }}' ]
+          key=$(cat cache-public-key.txt)
+          nix copy --from https://github.com/cloakium/cloakium/releases/latest/download \
+            --option require-sigs true --option trusted-public-keys "$key" "$native"
       - name: Build without write tokens or signing credentials
         timeout-minutes: 600
         run: nix build .#chromium .#playwright .#browser --cores 16 --max-jobs 1 -L

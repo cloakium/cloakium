@@ -17,9 +17,11 @@
 
 pub mod cache;
 pub mod command;
+pub mod evidence;
 pub mod narinfo;
 pub mod npm_pack;
 pub mod release;
+pub mod release_meta;
 pub mod report;
 pub mod sign_assets;
 pub mod sign_release;

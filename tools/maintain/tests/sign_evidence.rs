@@ -6,7 +6,8 @@ mod support;
 use std::fs;
 use std::path::PathBuf;
 
-use cloakium_maintain::sign_validate::{recorded_version, validate_evidence, Facts};
+use cloakium_maintain::evidence::{recorded_version, validate_evidence};
+use cloakium_maintain::sign_validate::Facts;
 
 /// Captured from the real pipeline (`artifacts/verification.json`).
 const REAL_EVIDENCE: &str = include_str!("fixtures/node-verification.json");

@@ -23,8 +23,9 @@ use cloakium_maintain::verify_publication::{self, VerifyPublicationOptions};
     long_about = "Prepare Cloakium upstream candidates and staged release assets.\n\n\
         `update` rewrites flake.lock, upstream.json, package.json, package-lock.json and \
         nix/npm-deps-hash.nix for the latest stable playwright-core. It publishes nothing. \
-        Playwright's bundled CfT pin and the native Chromium pin are tracked separately; the \
-        native major must be the bundled major or exactly one major older.\n\n\
+        Playwright's bundled CfT pin and the native Chromium pin are tracked separately and their \
+        major distance is reported for information only: whether a pair is supported is decided by \
+        the recorded driver+native integration evidence, not by a version heuristic.\n\n\
         `validate-update` compares an update candidate against a trusted checkout and accepts \
         only the five files, the dependency pin and the nixpkgs refresh an update may change.\n\n\
         `release` copies the flake outputs into a flat Nix binary cache and writes manifest.json, \

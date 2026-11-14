@@ -12,7 +12,9 @@ import { runPersistentChecks } from "./persistent.mjs";
 const require = createRequire(import.meta.url);
 const BINARY = process.env.CLOAKIUM_BINARY_PATH;
 const LAUNCH_ARGS = ["--no-sandbox", "--disable-dev-shm-usage"];
-const expectedVersion = JSON.parse(fs.readFileSync(new URL("../../upstream.json", import.meta.url), "utf8")).playwright.version;
+const expectedVersion =
+  process.env.CLOAKIUM_EXPECTED_PLAYWRIGHT_VERSION ??
+  JSON.parse(fs.readFileSync(new URL("../../upstream.json", import.meta.url), "utf8")).playwright.version;
 
 async function loadPlaywright() {
   const override = process.env.CLOAKIUM_PLAYWRIGHT_CORE;

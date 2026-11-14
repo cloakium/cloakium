@@ -14,7 +14,7 @@ use cloakium_maintain::command::{Command, MockRunner, Output};
 use cloakium_maintain::report::Reporter;
 use cloakium_maintain::sign_release::prepare;
 use serde_json::json;
-use support::sign::{expect_failure, nix32, signer, staged, PUBLIC_KEY};
+use support::sign::{expect_failure, nix32, run, signer, staged, PUBLIC_KEY, TAG};
 use support::{is_command, ok, read_json, write_json};
 
 #[test]
@@ -174,13 +174,34 @@ fn evidence_version_mismatch_is_rejected() {
 }
 
 #[test]
-fn a_bundled_chromium_outside_the_window_is_rejected() {
+fn a_far_ahead_bundled_chromium_signs_when_the_evidence_matches() {
+    // Playwright 1.65.1 bundles CfT 159 while the native build is 157; the
+    // signed release pins the native browser and the evidence records it.
     let current = staged();
     let mut manifest = current.manifest();
-    manifest["upstream"]["playwright"]["chromiumVersion"] = json!("159.0.8200.1");
+    manifest["upstream"]["playwright"]["chromiumVersion"] = json!("159.0.8154.6");
+    manifest["compatibility"] = json!({
+        "nativeChromium": "157.0.8103.50",
+        "playwrightChromium": "159.0.8154.6",
+        "majorsApart": 2,
+        "informational": true
+    });
     write_json(&current.release.join("manifest.json"), &manifest);
     cache::write_checksums(&current.release).expect("checksums");
-    expect_failure(&current.options(), "compatibility window");
+
+    let outcome = run(&current.options()).expect("a two-major jump must still sign");
+    assert_eq!(outcome.tag, TAG);
+    assert_eq!(outcome.manifest["signed"], true);
+}
+
+#[test]
+fn the_evidence_must_record_the_native_browser_not_the_bundled_one() {
+    let current = staged();
+    let mut evidence = read_json(&current.release.join("verification.json"));
+    evidence["browserVersion"] = json!("Chromium 159.0.8154.6");
+    write_json(&current.release.join("verification.json"), &evidence);
+    cache::write_checksums(&current.release).expect("checksums");
+    expect_failure(&current.options(), "pins the native Chromium 157.0.8103.50");
 }
 
 #[test]

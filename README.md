@@ -11,7 +11,7 @@ It is not a promise that a website will identify automation as a human.
 ## Install with the flake
 
 ```sh
-nix profile install --accept-flake-config \
+nix profile add --accept-flake-config \
   github:cloakium/cloakium#chromium \
   github:cloakium/cloakium#playwright \
   github:cloakium/cloakium#browser
@@ -39,6 +39,9 @@ local Chromium compile; without a substitute, expect a large native build.
 The default cache serves the latest release. For older pinned versions, add
 `--extra-substituters https://github.com/cloakium/cloakium/releases/download/<tag>`
 and install `github:cloakium/cloakium/<tag>#chromium` (and the matching packages).
+On multi-user Nix, the daemon must also trust the cache and public key. NixOS
+users can import `inputs.cloakium.nixosModules.cache`; `--accept-flake-config`
+alone cannot override daemon policy for an untrusted user.
 Supported build platforms are Linux x86-64 and ARM64; test evidence identifies
 which platform was actually run. Darwin and Windows builds are not supplied.
 
@@ -102,7 +105,9 @@ CAPTCHA handling and a perfect copy of any proprietary product are not guarantee
 Every six hours Actions checks stable Playwright and the Chromium recipe in
 nixpkgs. A successful no-op stays a no-op. A changed pair is patched and tested on
 an update branch; a dedicated builder then compiles and verifies the native
-browser. A separate trusted publisher signs the output, stages a complete draft,
+browser. If the exact native closure is already signed in the cache, a free
+hosted runner imports it and tests the new driver without recompiling Chromium.
+A separate trusted publisher signs the output, stages a complete draft,
 checks freshness, promotes the verified candidate and publishes the release.
 
 Failures retain diagnostics and leave the last verified release intact. Patches

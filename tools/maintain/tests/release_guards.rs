@@ -287,22 +287,29 @@ fn a_stale_native_chromium_pin_is_refused() {
 }
 
 #[test]
-fn an_incompatible_bundled_chromium_is_refused() {
+fn a_larger_major_distance_is_staged_with_an_informational_record() {
     let current = fixture();
     write_json(
         &current.root.join("upstream.json"),
         &json!({
-            "playwright": {"version": "1.65.0", "chromiumVersion": "159.0.8200.1"},
+            "playwright": {"version": "1.65.1", "chromiumVersion": "159.0.8154.6"},
             "chromium": {"version": CHROMIUM}
         }),
     );
     let mut runner = release_runner(&current);
-    let error = prepare(&options(&current), &mut runner, &Reporter::silent())
-        .expect_err("incompatible bundled browser");
-    assert!(
-        format!("{error:#}").contains("compatibility window"),
-        "{error:#}"
+
+    prepare(&options(&current), &mut runner, &Reporter::silent())
+        .expect("a two-major CfT jump must not block staging");
+
+    let manifest = read_json(&current.output.join("manifest.json"));
+    assert_eq!(manifest["compatibility"]["nativeChromium"], CHROMIUM);
+    assert_eq!(
+        manifest["compatibility"]["playwrightChromium"],
+        "159.0.8154.6"
     );
+    assert_eq!(manifest["compatibility"]["majorsApart"], 2);
+    assert_eq!(manifest["compatibility"]["informational"], true);
+    assert_eq!(manifest["chromium"], CHROMIUM);
 }
 
 #[test]

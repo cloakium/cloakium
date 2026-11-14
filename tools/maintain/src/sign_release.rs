@@ -18,11 +18,13 @@ use serde_json::{json, Value};
 
 use crate::cache;
 use crate::command::{Command, Runner, CACHE_COPY_TIMEOUT};
+use crate::evidence::validate_evidence;
 use crate::narinfo;
 use crate::release::{self, MANIFEST_ASSET, NOTES_ASSET, PUBLIC_KEY_ASSET};
+use crate::release_meta::release_notes;
 use crate::report::Reporter;
 use crate::sign_assets::{scan_assets, verify_checksums};
-use crate::sign_validate::{load_narinfos, validate_evidence, validate_manifest, Facts};
+use crate::sign_validate::{load_narinfos, validate_manifest, Facts};
 use crate::util;
 
 #[derive(Debug, Clone)]
@@ -99,6 +101,14 @@ pub fn prepare(
     let manifest = util::read_json(&target.join(MANIFEST_ASSET))
         .context("the staged release has no readable manifest.json")?;
     let facts = validate_manifest(&manifest, &options.revision, &target)?;
+    if let Some(bundled) = manifest
+        .pointer("/upstream/playwright/chromiumVersion")
+        .and_then(Value::as_str)
+    {
+        if let Some(note) = util::chromium_distance_note(&facts.chromium, bundled) {
+            eprintln!("warning: {note}");
+        }
+    }
     validate_evidence(&target.join(release::EVIDENCE_ASSET), &facts)?;
 
     let narinfos = load_narinfos(&target, &facts)?;
@@ -319,7 +329,7 @@ fn ensure_all_signed(
 }
 
 fn trusted_notes(facts: &Facts, key_name: &str) -> String {
-    let mut notes = release::release_notes(
+    let mut notes = release_notes(
         &facts.chromium,
         &facts.playwright,
         &facts.revision,

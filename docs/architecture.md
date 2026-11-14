@@ -24,10 +24,10 @@ recorded together. There is no Puppeteer integration.
 
 `playwright.chromiumVersion` records Playwright's reference Chrome-for-Testing
 build, while `chromium.version` records the actual source-built stable browser.
-The allowed window is the reference major or its immediate predecessor, followed
-by real integration tests. For example, Playwright 1.65 references Chromium 158
-and also tests stable Chrome 157 upstream. This is not exact-build equivalence;
-older/newer major skew outside that window is rejected rather than hidden.
+Their version difference is recorded, not treated as proof of incompatibility.
+Reference builds can advance independently of the stable browser. Strict patch
+replay and real integration tests gate the actual pair; signed evidence must
+match the exact native and driver versions being released.
 
 ## Update transaction
 
@@ -40,8 +40,9 @@ older/newer major skew outside that window is rejected rather than hidden.
 3. Source replay, driver build, library type checking and unit tests gate creation
    of an immutable candidate branch. A failure retains diagnostics, not a broken
    `main` update.
-4. A trusted, adequately sized builder compiles the native browser and runs local
-   integration tests against that exact executable and patched driver.
+4. A signed native cache hit runs on a free hosted runner, with no compiler
+   fallback. A cache miss requires an adequately sized native builder. Both paths
+   run integration tests against that exact executable and patched driver.
 5. Unsigned output data moves to a separate hosted publisher. Trusted-main Rust
    tooling validates it and signs it without executing candidate binaries. A fully
    uploaded draft and a freshness check gate promotion of the verified candidate.
@@ -70,7 +71,8 @@ changes source pins or substitutes a different browser.
 The signing secret lives only in the `release` environment and a mode-0600
 temporary file on the publisher. That environment accepts `main` workflow runs
 only. Its public key is committed. Checksums cover every asset;
-GitHub's OIDC provenance attests the checksum file. Nix signatures authenticate
+A public Sigstore keyless signature binds the checksum file to GitHub's OIDC
+workflow identity; its bundle is a small workflow artifact. Nix signatures authenticate
 cache paths independently of HTTPS redirects.
 
 Candidate tests never receive repository-write or signing credentials. A separate

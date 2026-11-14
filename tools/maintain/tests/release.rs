@@ -89,6 +89,13 @@ fn a_complete_release_is_staged() {
         manifest["flakeLock"]["nixpkgsRevision"],
         "0123456789abcdef0123456789abcdef01234567"
     );
+    assert_eq!(manifest["compatibility"]["nativeChromium"], CHROMIUM);
+    assert_eq!(
+        manifest["compatibility"]["playwrightChromium"],
+        BUNDLED_CHROMIUM
+    );
+    assert_eq!(manifest["compatibility"]["majorsApart"], 1);
+    assert_eq!(manifest["compatibility"]["informational"], true);
     assert!(release.join("source-flake.lock").is_file());
     assert_eq!(
         manifest["outputs"]["chromium"],
@@ -251,6 +258,7 @@ fn the_manifest_is_valid_json_with_stable_keys() {
             "packages",
             "patches",
             "flakeLock",
+            "compatibility",
             "signed"
         ]
     );

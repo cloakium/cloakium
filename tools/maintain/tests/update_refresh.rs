@@ -252,13 +252,13 @@ fn a_stale_native_chromium_pin_is_repaired() {
 }
 
 #[test]
-fn an_incompatible_playwright_browser_is_rejected() {
+fn a_newer_bundled_chromium_is_prepared_without_a_major_cap() {
     let (_directory, root) = support::temp_root();
     older_fixture(&root);
-    let archive = root.join("playwright-core-1.65.0.tgz");
+    let archive = root.join("playwright-core-1.65.1.tgz");
     write_npm_tarball(
         &archive,
-        &json!({"browsers": [{"name": "chromium", "revision": 1300, "browserVersion": "159.0.8200.1"}]}),
+        &json!({"browsers": [{"name": "chromium", "revision": 1400, "browserVersion": "159.0.8154.6"}]}),
     );
     let archive_path = archive.to_string_lossy().into_owned();
     let mut runner = MockRunner::new(move |command: &Command| -> Result<Output> {
@@ -267,17 +267,26 @@ fn an_incompatible_playwright_browser_is_rejected() {
                 &json!({"hash": "sha256-upstream=", "storePath": archive_path}).to_string(),
             ));
         }
+        if is_command(command, "nix", &["run"]) {
+            return Ok(ok(&format!("sha256-{}=", "B".repeat(43))));
+        }
         Ok(ok(if command.program == "npm" {
-            "1.65.0"
+            "1.65.1"
         } else {
             CHROMIUM
         }))
     });
 
-    let error = prepare(&options(&root, false), &mut runner, &Reporter::silent())
-        .expect_err("incompatible bundled browser");
-    assert!(
-        format!("{error:#}").contains("compatibility window"),
-        "{error:#}"
+    let outcome = prepare(&options(&root, false), &mut runner, &Reporter::silent())
+        .expect("a two-major CfT jump must not block a candidate");
+
+    assert!(outcome.changed);
+    assert_eq!(outcome.playwright, "1.65.1");
+    let metadata = read_json(&root.join("upstream.json"));
+    assert_eq!(metadata["playwright"]["version"], "1.65.1");
+    assert_eq!(metadata["playwright"]["chromiumVersion"], "159.0.8154.6");
+    assert_eq!(
+        metadata["chromium"]["version"], CHROMIUM,
+        "the native pin stays exactly what the flake builds"
     );
 }

@@ -196,6 +196,33 @@ matches and overlapping hunks are hard errors. `--max-offset <N>` narrows the
 search to a window around the declared line for diagnosis only; it is not part
 of the normal build.
 
+## Validating a candidate release before the pin moves
+
+`nix/playwright.nix` takes an optional `upstreamInfo` argument that defaults to
+`upstream.json`, so a candidate can be built and tested without touching the
+default pin:
+
+```nix
+pkgs.callPackage ./nix/playwright.nix {
+  nodejs = pkgs.nodejs_26;
+  upstreamInfo = {
+    playwright = {
+      version = "1.65.1";
+      url = "https://registry.npmjs.org/playwright-core/-/playwright-core-1.65.1.tgz";
+      hash = "sha256-…";          # nix store prefetch-file
+      chromiumVersion = "159.0.8154.6";
+      browserRevision = "1255";
+    };
+    chromium.version = "157.0.8103.50";
+  };
+}
+```
+
+The driver suite accepts `CLOAKIUM_EXPECTED_PLAYWRIGHT_VERSION` for the same
+purpose: without it the suite checks the repository pin from `upstream.json`;
+with it, the fixture asserts the candidate version instead. Production runs keep
+checking the root pin.
+
 ## Updating to a new Playwright release
 
 1. `npm view playwright-core@<version> dist.integrity dist.tarball` and prefetch

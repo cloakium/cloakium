@@ -10,6 +10,7 @@ use serde_json::{json, Map, Value};
 use crate::cache;
 use crate::command::{Command, Runner, NETWORK_TIMEOUT};
 use crate::npm_pack::pack;
+use crate::release_meta::{flake_lock_facts, release_notes};
 use crate::report::Reporter;
 use crate::util;
 
@@ -196,8 +197,9 @@ pub fn prepare(
     let chromium = nix_eval(&reference, "chromium.version", &root, runner)?;
 
     // Two separate pins: the native Chromium we build, and the CfT major
-    // Playwright bundles. They never have to match; only the major must be
-    // inside the documented one-major compatibility window.
+    // Playwright bundles. They never have to match; the major distance is
+    // recorded for information only, because support is decided by the
+    // recorded driver+native integration evidence.
     let upstream_browser = upstream
         .get("playwright")
         .and_then(|entry| entry.get("chromiumVersion"))
@@ -213,10 +215,12 @@ pub fn prepare(
         "upstream.json pins Chromium {pinned_chromium} but the flake builds {chromium}; run update to repair the native pin"
     );
     ensure!(
-        util::chromium_compatible(&chromium, upstream_browser),
-        "the native Chromium {chromium} is outside the compatibility window for Playwright's bundled Chromium {upstream_browser}: \
-         the native major must be the bundled major or exactly one major older"
+        util::is_numeric_version(upstream_browser, &[3, 4]),
+        "upstream.json playwright.chromiumVersion is not a stable version: {upstream_browser:?}"
     );
+    if let Some(note) = util::chromium_distance_note(&chromium, upstream_browser) {
+        eprintln!("warning: {note}");
+    }
 
     let browser_source =
         Path::new(outputs["browser"].as_str().expect("browser path")).join(BROWSER_PACKAGE_DIR);
@@ -258,6 +262,14 @@ pub fn prepare(
 
     let tag = release_tag(&chromium, &playwright, &options.revision);
     let signed = options.signing_key.is_some();
+    // Recorded for information only. Whether the pair works is decided by the
+    // driver+native integration evidence, never by this distance.
+    let compatibility = json!({
+        "nativeChromium": chromium.clone(),
+        "playwrightChromium": upstream_browser,
+        "majorsApart": util::chromium_major_distance(&chromium, upstream_browser),
+        "informational": true,
+    });
     let manifest = json!({
         "schemaVersion": 1,
         "sourceRevision": options.revision,
@@ -279,6 +291,7 @@ pub fn prepare(
             "content": flake_lock.content,
             "nixpkgsRevision": flake_lock.nixpkgs_revision,
         },
+        "compatibility": compatibility,
         "signed": signed,
     });
     util::write_json(&output.join(MANIFEST_ASSET), &manifest)?;
@@ -342,68 +355,6 @@ pub fn prepare(
         tag,
         assets: output,
         manifest,
-    })
-}
-
-/// Release notes for a staged or signed release.
-pub fn release_notes(
-    chromium: &str,
-    playwright: &str,
-    revision: &str,
-    system: &str,
-    browser_package: &str,
-    playwright_package: &str,
-    signed: bool,
-) -> String {
-    let status = if signed {
-        "This release is a signed Nix binary cache, not a portable non-Nix browser. See the \
-         repository README for installation and the fingerprint coverage matrix."
-    } else {
-        "This staging build is an unsigned Nix binary cache. It is not installable until the \
-         trusted publisher re-verifies every asset and signs the cache narinfos. See the \
-         repository README for installation and the fingerprint coverage matrix."
-    };
-    format!(
-        "# Cloakium {chromium} / Playwright {playwright}\n\n\
-         Source: `{revision}`; platform: `{system}`.\n\n\
-         Original Cloakium code and patches are MIT licensed. Chromium, Playwright and their \
-         dependencies retain their upstream licenses. No proprietary browser is included.\n\n\
-         {status}\n\n\
-         Node/Bun packages: `{browser_package}`, `{playwright_package}`. Install both packages \
-         from this same release.\n\n\
-         `manifest.json` identifies source pins, the `source-flake.lock` pin and patch hashes; \
-         `SHA256SUMS` covers all assets.\n"
-    )
-}
-
-struct FlakeLockFacts {
-    sha256: String,
-    content: String,
-    nixpkgs_revision: String,
-}
-
-/// Read and validate the source `flake.lock` that ships with the release.
-fn flake_lock_facts(root: &Path) -> Result<FlakeLockFacts> {
-    let path = root.join("flake.lock");
-    let content =
-        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
-    let value: Value = serde_json::from_str(&content)
-        .with_context(|| format!("failed to parse {}", path.display()))?;
-    let revision = value
-        .get("nodes")
-        .and_then(|nodes| nodes.get("nixpkgs"))
-        .and_then(|node| node.get("locked"))
-        .and_then(|locked| locked.get("rev"))
-        .and_then(Value::as_str)
-        .context("flake.lock has no nodes.nixpkgs.locked.rev")?;
-    ensure!(
-        revision.len() == 40 && revision.bytes().all(|byte| byte.is_ascii_hexdigit()),
-        "flake.lock has an invalid nixpkgs revision: {revision:?}"
-    );
-    Ok(FlakeLockFacts {
-        sha256: util::digest(&path)?,
-        content,
-        nixpkgs_revision: revision.to_string(),
     })
 }
 

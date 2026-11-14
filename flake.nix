@@ -151,6 +151,7 @@
       };
 
       nixosModules = {
+        cache = import ./nix/cache-module.nix;
         builder = import ./nix/builder-module.nix;
       };
     };

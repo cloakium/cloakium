@@ -15,7 +15,7 @@ The root flake exports a builder module:
 
 ```nix
 {
-  imports = [ inputs.cloakium.nixosModules.builder ];
+  imports = [ inputs.cloakium.nixosModules.cache inputs.cloakium.nixosModules.builder ];
   services.cloakium-builder = {
     enable = true;
     tokenFile = "/run/secrets/cloakium-runner-token";
@@ -36,6 +36,12 @@ larger runners may require a paid GitHub plan and incur charges.
 For an ARM64 self-hosted builder, use
 `["self-hosted","linux","arm64","cloakium-chromium"]`. An exported ARM64 package
 is not a claim that an ARM64 binary has already been built or tested.
+Set `CLOAKIUM_SYSTEM=aarch64-linux` when targeting that architecture.
+
+Driver-only updates use a hosted runner when the exact native closure and its
+signatures are already available in the cache. It imports that closure without
+a build fallback. A new native derivation still requires the large builder;
+the workflow never attempts a cold Chromium compile on a small hosted runner.
 
 ## Signing
 

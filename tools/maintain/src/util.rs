@@ -118,22 +118,29 @@ pub fn version_major(value: &str) -> Option<u64> {
     value.split('.').next()?.parse().ok()
 }
 
-/// Compatibility policy between the browser Playwright bundles and the native
-/// browser Cloakium actually builds.
+/// Informational major distance between the browser Playwright bundles and the
+/// native browser Cloakium builds. Positive means the bundled major is newer.
 ///
-/// The bundled CfT major (`playwright-core`'s `chromiumVersion`) and the
-/// native Chromium major are tracked as two separate pins. They are not
-/// required to be equal, and never share a version string: official Playwright
-/// releases are tested against the stable Chrome of the previous major as
-/// well, so the native major may be the bundled major or one major older.
-/// Anything outside that window is rejected.
-pub fn chromium_compatible(native: &str, playwright_browser: &str) -> bool {
-    let (Some(native_major), Some(bundled_major)) =
-        (version_major(native), version_major(playwright_browser))
-    else {
-        return false;
-    };
-    native_major == bundled_major || native_major.checked_add(1) == Some(bundled_major)
+/// This is deliberately **not** a compatibility verdict: whether a pair works is
+/// decided by the real driver+native integration tests recorded in the
+/// verification evidence, not by a version heuristic.
+pub fn chromium_major_distance(native: &str, playwright_browser: &str) -> Option<i64> {
+    let native = version_major(native)?;
+    let bundled = version_major(playwright_browser)?;
+    Some(bundled as i64 - native as i64)
+}
+
+/// Human-readable informational note, or `None` when the majors match.
+pub fn chromium_distance_note(native: &str, playwright_browser: &str) -> Option<String> {
+    let distance = chromium_major_distance(native, playwright_browser)?;
+    if distance == 0 {
+        return None;
+    }
+    Some(format!(
+        "Playwright bundles Chromium {playwright_browser} while the native build is {native} \
+         ({distance:+} major); this is informational only — support is decided by the recorded \
+         driver+native integration evidence"
+    ))
 }
 
 /// `sha256-<43 base64 characters>=`, the form `prefetch-npm-deps` and Nix
@@ -307,13 +314,36 @@ mod tests {
     }
 
     #[test]
-    fn the_chromium_compatibility_window_is_one_major() {
-        // Playwright 1.65 bundles CfT 158; the native build tracks 157.
-        assert!(chromium_compatible("157.0.8103.50", "158.0.8127.18"));
-        assert!(chromium_compatible("158.0.8127.18", "158.0.8127.18"));
-        assert!(!chromium_compatible("156.0.8078.4", "158.0.8127.18"));
-        assert!(!chromium_compatible("159.0.8200.1", "158.0.8127.18"));
-        assert!(!chromium_compatible("", "158.0.8127.18"));
-        assert!(!chromium_compatible("157.0.8103.50", "not-a-version"));
+    fn chromium_major_distance_is_informational() {
+        assert_eq!(
+            chromium_major_distance("157.0.8103.50", "159.0.8154.6"),
+            Some(2)
+        );
+        assert_eq!(
+            chromium_major_distance("157.0.8103.50", "158.0.8127.18"),
+            Some(1)
+        );
+        assert_eq!(
+            chromium_major_distance("158.0.8127.18", "158.0.8127.18"),
+            Some(0)
+        );
+        assert_eq!(
+            chromium_major_distance("159.0.8154.6", "157.0.8103.50"),
+            Some(-2)
+        );
+        assert_eq!(chromium_major_distance("", "158.0.8127.18"), None);
+        assert_eq!(
+            chromium_major_distance("157.0.8103.50", "not-a-version"),
+            None
+        );
+    }
+
+    #[test]
+    fn distance_notes_only_appear_when_majors_differ() {
+        assert!(chromium_distance_note("157.0.8103.50", "157.0.8103.50").is_none());
+        let note = chromium_distance_note("157.0.8103.50", "159.0.8154.6").expect("note");
+        assert!(note.contains("informational only"), "{note}");
+        assert!(note.contains("+2 major"), "{note}");
+        assert!(chromium_distance_note("", "159.0.8154.6").is_none());
     }
 }

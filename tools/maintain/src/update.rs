@@ -237,13 +237,12 @@ fn update_playwright(
     let hash = json_string(&fetched, "hash")?;
     let store_path = json_string(&fetched, "storePath")?;
     let browsers = browser_metadata(Path::new(&store_path))?;
-    ensure!(
-        util::chromium_compatible(native_chromium, &browsers.chromium_version),
-        "playwright-core {version} bundles Chromium {}, but the root flake builds {native_chromium}; \
-         this is outside the compatibility window: the native browser must be the bundled major \
-         or exactly one major older",
-        browsers.chromium_version
-    );
+    // The bundled CfT major and the native major are independent pins; a jump
+    // is reported for information only, because the real driver+native tests
+    // decide whether the pair works.
+    if let Some(note) = util::chromium_distance_note(native_chromium, &browsers.chromium_version) {
+        eprintln!("warning: {note}");
+    }
 
     let playwright = object_mut(metadata, "playwright")?;
     playwright.insert("version".into(), Value::String(version.to_string()));

@@ -98,26 +98,34 @@ fn upstream_versions_must_be_stable() {
 }
 
 #[test]
-fn the_native_chromium_must_be_the_bundled_major_or_one_behind() {
+fn the_two_chromium_pins_are_validated_independently_of_major_distance() {
     // 158 bundled / 157 native is the shipping combination and the happy-path
-    // candidate already covers it. The bundled major itself is also allowed.
+    // candidate covers it. Any stable numeric pair is accepted; the major
+    // distance is informational and the real evidence decides support.
     let trees = new_trees();
     edit_json(&trees.candidate.join("upstream.json"), |value| {
         value["chromium"]["version"] = json!(BUNDLED_CHROMIUM);
     });
-    run(&trees.base, &trees.candidate).expect("the same major is allowed");
+    run(&trees.base, &trees.candidate).expect("the same major is accepted");
 
     let trees = new_trees();
     edit_json(&trees.candidate.join("upstream.json"), |value| {
         value["chromium"]["version"] = json!("156.0.8078.4");
     });
-    expect_failure(&trees, "compatibility window");
+    run(&trees.base, &trees.candidate).expect("an older native major is accepted");
 
     let trees = new_trees();
     edit_json(&trees.candidate.join("upstream.json"), |value| {
-        value["chromium"]["version"] = json!("159.0.8200.1");
+        value["chromium"]["version"] = json!("159.0.8154.6");
     });
-    expect_failure(&trees, "compatibility window");
+    run(&trees.base, &trees.candidate).expect("a newer native major is accepted");
+
+    // Malformed versions are still rejected outright.
+    let trees = new_trees();
+    edit_json(&trees.candidate.join("upstream.json"), |value| {
+        value["chromium"]["version"] = json!("not-a-version");
+    });
+    expect_failure(&trees, "not a stable version");
 }
 
 #[test]

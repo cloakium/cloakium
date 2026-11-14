@@ -279,12 +279,11 @@ impl UpstreamFacts {
             "upstream.chromium.version is not a stable version: {chromium_version:?}"
         );
         // Two separate pins: the native browser we build and the CfT major the
-        // driver bundles. Only the documented one-major window applies.
-        ensure!(
-            util::chromium_compatible(&chromium_version, &browser_version),
-            "the native Chromium {chromium_version} is outside the compatibility window for Playwright's bundled Chromium {browser_version}: \
-             the native major must be the bundled major or exactly one major older"
-        );
+        // driver bundles. A major jump is informational; the recorded
+        // driver+native evidence decides whether the pair is supported.
+        if let Some(note) = util::chromium_distance_note(&chromium_version, &browser_version) {
+            eprintln!("warning: {note}");
+        }
         for (block_name, block) in [("playwright", playwright), ("chromium", chromium)] {
             for (key, entry) in block {
                 if matches!(

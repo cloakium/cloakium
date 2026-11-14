@@ -5,10 +5,12 @@
   fetchurl,
   nodejs,
   rustPlatform,
+  # Defaults to the repository metadata; pass an explicit attribute set to build
+  # a candidate release in a temporary flake without touching the default pin.
+  upstreamInfo ? builtins.fromJSON (builtins.readFile ../upstream.json),
 }:
 let
-  upstream = builtins.fromJSON (builtins.readFile ../upstream.json);
-  inherit (upstream) playwright;
+  inherit (upstreamInfo) playwright;
   patchSource = builtins.path {
     path = ../patches/playwright;
     name = "cloakium-playwright-patches";

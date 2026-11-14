@@ -402,6 +402,7 @@ jobs:
           "$jj" git fetch
           fetched=$("$jj" log --no-graph -r main@origin -T commit_id)
           [ "$fetched" = "$BASE_REVISION" ]
+          "$jj" bookmark track main@origin
           "$jj" bookmark set main -r "$REVISION"
           "$jj" git push --bookmark main
       - name: Publish only the complete verified release

@@ -4,7 +4,7 @@
 //! manifest pins, the recorded verification evidence, the flake lock pin and
 //! every NAR payload hash. Nothing is executed.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -354,12 +354,16 @@ pub fn load_narinfos(
             "duplicate narinfo entries for one store path"
         );
     }
-    let expected: BTreeSet<&str> = facts.outputs.iter().map(String::as_str).collect();
-    let found_paths: BTreeSet<&str> = found.keys().map(String::as_str).collect();
-    ensure!(
-        expected == found_paths,
-        "the release narinfos do not cover exactly the manifest outputs"
-    );
+    // Every manifest output must have a narinfo. Extra narinfos belong to the
+    // runtime closure substituted from upstream caches and are validated too,
+    // but they are not signed with the release key.
+    for output in &facts.outputs {
+        ensure!(
+            found.contains_key(output),
+            "the release has no narinfo for {output}"
+        );
+    }
+    ensure!(!found.is_empty(), "the release has no narinfos");
     Ok(found)
 }
 

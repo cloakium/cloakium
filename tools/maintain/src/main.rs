@@ -31,8 +31,9 @@ use cloakium_maintain::verify_publication::{self, VerifyPublicationOptions};
         closure.json, SHA256SUMS and release-notes.md. With `--unsigned` it produces an unsigned \
         staging directory (at most 9 GiB, sized for the Actions cache) for a trusted publisher; \
         otherwise it signs with --signing-key.\n\n\
-        `sign-release` re-verifies a staged release and signs its narinfos with the trusted key. \
-        It runs no code from the staged artifacts. Signing keys are never printed.\n\n\
+        `sign-release` re-verifies a staged release and signs every narinfo in the cache \
+        (the manifest outputs and their runtime closure, including custom patched paths) with \
+        the trusted key. It runs no code from the staged artifacts. Signing keys are never printed.\n\n\
         `verify-publication` cross-checks an existing release's API JSON, SHA256SUMS and manifest \
         without network access, so re-running a publication is safe.\n\n\
         Every command reports workflow fields on stdout and in $GITHUB_OUTPUT.",

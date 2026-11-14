@@ -331,6 +331,34 @@ mod tests {
     }
 
     #[test]
+    fn signature_text_never_bypasses_payload_verification() {
+        // A signature line is just text; tampering with the payload must still
+        // be caught, both before and after normalisation drops inherited
+        // signatures.
+        let directory = tempfile::tempdir().expect("tempdir");
+        std::fs::write(directory.path().join("abc.nar"), b"tampered payload").expect("payload");
+        let narinfo = "StorePath: /nix/store/abc-example\nURL: abc.nar\nCompression: none\nNarHash: sha256:0mdqa9w1p6cmli6976v4wi0sw9r4p5prkj7lzfd1877wk11c9c73\nNarSize: 0\nSig: cache.nixos.org-1:not-a-real-signature\n";
+        let info = NarInfo::parse(narinfo).expect("parse");
+        assert!(info.verify_payload(directory.path()).is_err());
+
+        let stripped = strip_signatures(narinfo);
+        assert!(!stripped.contains("Sig:"));
+        let info = NarInfo::parse(&stripped).expect("parse stripped");
+        assert!(info.verify_payload(directory.path()).is_err());
+    }
+
+    #[test]
+    fn malformed_signature_lines_are_removed() {
+        let text = "StorePath: /nix/store/abc-example\nURL: abc.nar\nNarHash: sha256:0mdqa9w1p6cmli6976v4wi0sw9r4p5prkj7lzfd1877wk11c9c73\nNarSize: 0\nSig: no-colon\nSig:\nSig: key:value\n";
+        let stripped = strip_signatures(text);
+        assert!(!stripped.contains("Sig"));
+        assert_eq!(
+            stripped,
+            "StorePath: /nix/store/abc-example\nURL: abc.nar\nNarHash: sha256:0mdqa9w1p6cmli6976v4wi0sw9r4p5prkj7lzfd1877wk11c9c73\nNarSize: 0\n"
+        );
+    }
+
+    #[test]
     fn payload_urls_must_be_flat() {
         let text = SAMPLE.replace("URL: abc.nar.xz", "URL: nar/abc.nar.xz");
         let info = NarInfo::parse(&text).expect("parse");

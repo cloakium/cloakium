@@ -70,6 +70,10 @@
             prefetch-npm-deps
             actionlint
           ];
+          devShellInputs = {
+            nativeBuildInputs = [ pkgs.pkg-config ];
+            buildInputs = [ pkgs.xz ];
+          };
         in
         {
           packages = {
@@ -109,14 +113,20 @@
 
           # No Chromium build is pulled in by the default shell. Opt into the
           # patched binary explicitly with `nix develop .#with-chromium`.
-          devShells.default = pkgs.mkShell {
-            packages = devPackages;
-          };
+          devShells.default = pkgs.mkShell (
+            devShellInputs
+            // {
+              packages = devPackages;
+            }
+          );
 
-          devShells.with-chromium = pkgs.mkShell {
-            packages = devPackages ++ [ chromium ];
-            CLOAKIUM_BINARY_PATH = "${chromium}/bin/cloakium-chromium";
-          };
+          devShells.with-chromium = pkgs.mkShell (
+            devShellInputs
+            // {
+              packages = devPackages ++ [ chromium ];
+              CLOAKIUM_BINARY_PATH = "${chromium}/bin/cloakium-chromium";
+            }
+          );
         };
     in
     {

@@ -61,44 +61,60 @@ pub fn flatten_cache(directory: &Path) -> Result<()> {
             )
         })?;
     }
-    remove_cache_bookkeeping(directory)?;
+    remove_store_bookkeeping(directory)?;
     Ok(())
 }
 
-/// `nix copy`, `nix store sign` and `nix store verify` create `log/` and
-/// `realisations/` inside a file cache. Neither can be a flat GitHub release
-/// asset, and neither is needed to substitute an input-addressed output.
-pub fn remove_cache_bookkeeping(directory: &Path) -> Result<()> {
-    let logs = directory.join("log");
-    if fs::symlink_metadata(&logs).is_ok() {
-        fs::remove_dir_all(&logs)
-            .with_context(|| format!("failed to remove {}", logs.display()))?;
+/// Nix file stores create bookkeeping directories next to the assets:
+/// `log/`, `realisations/` and, since Nix 2.34, `build-trace-v2/`. None of them
+/// can be a flat GitHub release asset and none is needed to substitute an
+/// input-addressed output, so they are pruned. `nar/` must already be empty,
+/// and non-empty `realisations/` is refused rather than silently dropped.
+pub fn remove_store_bookkeeping(directory: &Path) -> Result<()> {
+    let mut directories = Vec::new();
+    for entry in fs::read_dir(directory)
+        .with_context(|| format!("failed to list {}", directory.display()))?
+    {
+        let entry = entry?;
+        if entry.file_type()?.is_dir() {
+            directories.push(entry.path());
+        }
     }
-    // Reopening a flat cache for writing recreates an empty `nar/`; anything
-    // inside it means the cache was never flattened.
-    let nar = directory.join("nar");
-    if fs::symlink_metadata(&nar).is_ok() {
-        let mut entries =
-            fs::read_dir(&nar).with_context(|| format!("failed to list {}", nar.display()))?;
-        ensure!(
-            entries.next().is_none(),
-            "the release cache is not flattened: {} is not empty",
-            nar.display()
-        );
-        fs::remove_dir(&nar).with_context(|| format!("failed to remove {}", nar.display()))?;
-    }
-    let realisations = directory.join("realisations");
-    if fs::symlink_metadata(&realisations).is_ok() {
-        let mut entries = fs::read_dir(&realisations)
-            .with_context(|| format!("failed to list {}", realisations.display()))?;
-        ensure!(
-            entries.next().is_none(),
-            "the staged cache contains content-addressed realisations, which cannot be published as flat release assets"
-        );
-        fs::remove_dir(&realisations)
-            .with_context(|| format!("failed to remove {}", realisations.display()))?;
+    for path in directories {
+        let name = path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        match name.as_str() {
+            "nar" => {
+                ensure!(
+                    is_empty_directory(&path)?,
+                    "the release cache is not flattened: {} is not empty",
+                    path.display()
+                );
+                fs::remove_dir(&path)
+                    .with_context(|| format!("failed to remove {}", path.display()))?;
+            }
+            "realisations" => {
+                ensure!(
+                    is_empty_directory(&path)?,
+                    "the staged cache contains content-addressed realisations, which cannot be published as flat release assets"
+                );
+                fs::remove_dir(&path)
+                    .with_context(|| format!("failed to remove {}", path.display()))?;
+            }
+            _ => fs::remove_dir_all(&path)
+                .with_context(|| format!("failed to remove {}", path.display()))?,
+        }
     }
     Ok(())
+}
+
+fn is_empty_directory(path: &Path) -> Result<bool> {
+    Ok(fs::read_dir(path)
+        .with_context(|| format!("failed to list {}", path.display()))?
+        .next()
+        .is_none())
 }
 
 /// Copy `paths` into a fresh cache at `output`, then flatten it.
@@ -152,9 +168,41 @@ pub fn stage_cache(
     flatten_cache(&output)?;
     match signing_key {
         Some(_) => verify_signed(&output)?,
-        None => verify_unsigned(&output)?,
+        None => {
+            // Dependencies substituted from upstream caches arrive signed;
+            // normalise before insisting the staging cache is unsigned.
+            strip_inherited_signatures(&output)?;
+            verify_unsigned(&output)?;
+        }
     }
     Ok(output)
+}
+
+/// Remove signatures inherited from upstream caches.
+///
+/// `nix copy` only signs when a secret key is supplied; without one it keeps
+/// the signatures the substituter already had (for example the signatures
+/// cache.nixos.org placed on glibc). An unsigned staging cache must be
+/// normalised by dropping those lines, keeping every other field byte for byte
+/// so URLs, file hashes, NAR hashes and references are untouched.
+pub fn strip_inherited_signatures(directory: &Path) -> Result<usize> {
+    let mut stripped = 0;
+    for path in narinfo_paths(directory)? {
+        let text = fs::read_to_string(&path)
+            .with_context(|| format!("failed to read {}", path.display()))?;
+        if !has_signature_line(&text) {
+            continue;
+        }
+        fs::write(&path, crate::narinfo::strip_signatures(&text))
+            .with_context(|| format!("failed to rewrite {}", path.display()))?;
+        stripped += 1;
+    }
+    Ok(stripped)
+}
+
+pub fn has_signature_line(text: &str) -> bool {
+    text.lines()
+        .any(|line| line.starts_with("Sig: ") || line.trim_end() == "Sig:")
 }
 
 /// Every narinfo must carry at least one signature line.

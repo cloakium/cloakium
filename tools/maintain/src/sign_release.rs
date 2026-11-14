@@ -1,10 +1,13 @@
 //! Sign a staged, unprivileged release with the trusted publisher key.
 //!
 //! The staged bytes are validated first (see [`crate::sign_validate`]), then
-//! signatures are stripped and regenerated with the official Nix CLI, and the
-//! result is re-verified with `nix store verify` against the release public
-//! key. Nothing from the staging directory is ever executed, and the signing
-//! key only travels as a key file or on stdin — never in argv or logs.
+//! signatures are stripped and regenerated with the official Nix CLI for
+//! **every** verified narinfo in the cache — the manifest outputs *and* their
+//! runtime closure, because the closure contains custom patched paths that do
+//! not exist in cache.nixos.org and must stay substitutable. The result is
+//! re-verified with `nix store verify` against the release public key. Nothing
+//! from the staging directory is ever executed, and the signing key only
+//! travels as a key file or on stdin — never in argv or logs.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -58,6 +61,10 @@ pub fn prepare(
         "--input must be a release directory: {}",
         input.display()
     );
+    // Nix store commands (including a read-only `nix copy --from`) recreate
+    // bookkeeping directories such as `nar/`, `log/` and `build-trace-v2/` in
+    // the cache; prune them before checking the release layout.
+    cache::remove_store_bookkeeping(&input)?;
     ensure_release_layout(&input)?;
 
     let public_key = read_public_key(&util::absolute(&options.public_key)?)?;
@@ -102,16 +109,17 @@ pub fn prepare(
     for (_, path) in narinfos.values() {
         strip_file_signatures(path)?;
     }
+    // Sign every path we ship. Nix signatures attest cache-path integrity, so
+    // an unsigned closure entry (custom patched Chromium, sandbox references)
+    // would force consumers to rebuild or fall back to a missing upstream.
+    let signed_paths: Vec<String> = narinfos.keys().cloned().collect();
 
-    sign(&target, &signing_key, &facts.outputs, runner)?;
-    verify_with_public_key(&target, &public_key.text, &facts.outputs, runner)?;
-    ensure!(
-        all_narinfos_signed(&target)?,
-        "signing did not add a signature to every narinfo"
-    );
+    sign(&target, &signing_key, &signed_paths, runner)?;
+    verify_with_public_key(&target, &public_key.text, &signed_paths, runner)?;
+    ensure_all_signed(&narinfos, &public_key.name)?;
     // `nix store sign` and `nix store verify` reopen the cache for writing and
     // recreate their bookkeeping directories; they are not release assets.
-    cache::remove_cache_bookkeeping(&target)?;
+    cache::remove_store_bookkeeping(&target)?;
 
     let narinfo_count = narinfos.len();
     fs::write(
@@ -289,17 +297,25 @@ fn verify_with_public_key(
     Ok(())
 }
 
-fn all_narinfos_signed(directory: &Path) -> Result<bool> {
-    for info in cache::narinfo_paths(directory)? {
-        let text = fs::read_to_string(&info)?;
-        if !text
-            .lines()
-            .any(|line| line.starts_with("Sig: ") || line.trim_end() == "Sig:")
-        {
-            return Ok(false);
-        }
+/// Every shipped narinfo must carry the release key's signature. Nix accepts
+/// content-addressed paths without a signature, but signing them too keeps the
+/// published cache uniformly verifiable and avoids relying on that exception.
+fn ensure_all_signed(
+    narinfos: &std::collections::BTreeMap<String, (narinfo::NarInfo, PathBuf)>,
+    key_name: &str,
+) -> Result<()> {
+    for (store_path, (_, path)) in narinfos {
+        let text = fs::read_to_string(path)?;
+        ensure!(
+            cache::has_signature_line(&text),
+            "signing did not add a signature to {store_path}"
+        );
+        ensure!(
+            text.contains(&format!("Sig: {key_name}:")),
+            "{store_path} is not signed by the release key {key_name}"
+        );
     }
-    Ok(true)
+    Ok(())
 }
 
 fn trusted_notes(facts: &Facts, key_name: &str) -> String {

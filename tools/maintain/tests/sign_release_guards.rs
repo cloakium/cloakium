@@ -120,7 +120,7 @@ fn a_missing_narinfo_for_an_output_is_rejected() {
     let current = staged();
     fs::remove_file(current.release.join("browser.narinfo")).expect("remove narinfo");
     cache::write_checksums(&current.release).expect("checksums");
-    expect_failure(&current.options(), "do not cover exactly");
+    expect_failure(&current.options(), "has no narinfo for");
 }
 
 #[test]

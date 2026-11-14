@@ -3,6 +3,7 @@
 
 mod support;
 
+use std::cell::RefCell;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command as Process;
@@ -124,6 +125,88 @@ fn total_size_sums_every_regular_file() {
     assert_eq!(
         cloakium_maintain::cache::total_size(&root).expect("size"),
         15
+    );
+}
+
+#[test]
+fn unsigned_staging_strips_inherited_upstream_signatures() {
+    let (_directory, root) = support::temp_root();
+    let output = root.join("release");
+    let originals = RefCell::new(Vec::<(String, String)>::new());
+    {
+        let originals = &originals;
+        let mut runner = MockRunner::new(move |command: &Command| -> Result<Output> {
+            let raw = command.args[2].clone();
+            let directory = raw
+                .strip_prefix("file://")
+                .and_then(|rest| rest.split('?').next())
+                .expect("destination");
+            // A dependency substituted from cache.nixos.org keeps its upstream
+            // signature, exactly as `nix copy` does without a secret key.
+            write_cache_directory(
+                Path::new(directory),
+                "/nix/store/aaa-dependency",
+                Some("cache.nixos.org-1:c2lnbmF0dXJl"),
+            );
+            let narinfo = "StorePath: /nix/store/bbb-output\nURL: nar/second.nar.xz\nCompression: none\nFileHash: sha256:abc\nFileSize: 6\nNarHash: sha256:abc\nNarSize: 6\nReferences: \n";
+            fs::write(Path::new(directory).join("nar/second.nar.xz"), b"second")?;
+            fs::write(Path::new(directory).join("second.narinfo"), narinfo)?;
+            originals.borrow_mut().push((
+                "example.narinfo".to_string(),
+                fs::read_to_string(Path::new(directory).join("example.narinfo"))?,
+            ));
+            originals
+                .borrow_mut()
+                .push(("second.narinfo".to_string(), narinfo.to_string()));
+            Ok(ok(""))
+        });
+        stage_cache(
+            &[PathBuf::from("/nix/store/aaa-dependency")],
+            &output,
+            None,
+            &mut runner,
+        )
+        .expect("an unsigned stage must accept inherited upstream signatures");
+    }
+
+    // Signature lines are gone; every other field is byte-identical.
+    let stable = |text: &str| -> String {
+        text.lines()
+            .filter(|line| !line.starts_with("Sig: ") && !line.starts_with("URL: "))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    for (name, before) in originals.borrow().iter() {
+        let after = fs::read_to_string(output.join(name)).expect("narinfo");
+        assert!(!after.contains("Sig:"), "{after}");
+        assert_eq!(stable(&after), stable(before), "{name} fields changed");
+    }
+    let flattened = fs::read_to_string(output.join("example.narinfo")).expect("narinfo");
+    assert!(flattened.contains("URL: example.nar.xz"), "{flattened}");
+    assert!(!flattened.contains("URL: nar/"), "{flattened}");
+    verify_unsigned(&output).expect("the normalised cache is unsigned");
+}
+
+#[test]
+fn signature_stripping_keeps_hashes_and_references() {
+    let (_directory, root) = support::temp_root();
+    let original = "StorePath: /nix/store/abc-example\nURL: abc.nar.xz\nCompression: xz\nFileHash: sha256:filehash\nFileSize: 10\nNarHash: sha256:narhash\nNarSize: 20\nReferences: /nix/store/dep-one /nix/store/dep-two\nSig: cache.nixos.org-1:AAAA\nSig: cloakium:BBBB\n";
+    fs::write(root.join("abc.narinfo"), original).expect("narinfo");
+
+    let stripped = cloakium_maintain::cache::strip_inherited_signatures(&root).expect("strip");
+
+    assert_eq!(stripped, 1);
+    let after = fs::read_to_string(root.join("abc.narinfo")).expect("narinfo");
+    assert_eq!(
+        after,
+        original
+            .replace("Sig: cache.nixos.org-1:AAAA\n", "")
+            .replace("Sig: cloakium:BBBB\n", "")
+    );
+    assert!(after.contains("References: /nix/store/dep-one /nix/store/dep-two"));
+    assert_eq!(
+        cloakium_maintain::cache::strip_inherited_signatures(&root).expect("again"),
+        0
     );
 }
 

@@ -96,6 +96,20 @@ pub fn staged() -> Staged {
     )
     .expect("tarball");
 
+    // A runtime-closure dependency that is not one of the manifest outputs; it
+    // must be signed too, otherwise it cannot be substituted from the release.
+    let payload = b"dependency payload".to_vec();
+    let digest = nix32(&payload);
+    fs::write(release.join("dependency.nar"), &payload).expect("nar");
+    fs::write(
+        release.join("dependency.narinfo"),
+        format!(
+            "StorePath: /nix/store/ddd-dependency\nURL: dependency.nar\nCompression: none\nFileHash: sha256:{digest}\nFileSize: {len}\nNarHash: sha256:{digest}\nNarSize: {len}\nReferences: \n",
+            len = payload.len()
+        ),
+    )
+    .expect("narinfo");
+
     let lock = json!({
         "nodes": {
             "nixpkgs": {"locked": {"rev": "0123456789abcdef0123456789abcdef01234567", "narHash": "sha256-lock", "lastModified": 1}},

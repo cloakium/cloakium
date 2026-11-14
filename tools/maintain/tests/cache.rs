@@ -171,11 +171,16 @@ fn cache_bookkeeping_directories_are_removed() {
     fs::create_dir(root.join("log")).expect("log directory");
     fs::write(root.join("log/build.log"), "build output").expect("log file");
     fs::create_dir(root.join("realisations")).expect("realisations directory");
+    // Nix 2.34 writes build-trace bookkeeping next to the cache.
+    fs::create_dir(root.join("build-trace-v2")).expect("build trace directory");
+    fs::write(root.join("build-trace-v2/trace"), "trace").expect("trace file");
 
     flatten_cache(&root).expect("flatten");
 
     assert!(!root.join("log").exists());
     assert!(!root.join("realisations").exists());
+    assert!(!root.join("build-trace-v2").exists());
+    assert!(root.join("example.nar.xz").is_file());
 }
 
 #[test]

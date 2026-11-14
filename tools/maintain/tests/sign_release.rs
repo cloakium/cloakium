@@ -23,17 +23,24 @@ fn a_staged_release_is_verified_and_signed() {
 
     assert_eq!(*signed.borrow(), 1, "the cache is signed exactly once");
     assert_eq!(outcome.tag, TAG);
-    assert_eq!(outcome.narinfos, 3);
+    assert_eq!(
+        outcome.narinfos, 4,
+        "three outputs plus a closure dependency"
+    );
     for (name, _) in OUTPUTS {
         let info = current.narinfo(name);
         assert!(info.contains("Sig: cloakium-test:"), "{info}");
         assert!(info.contains("NarHash: sha256:"), "{info}");
     }
+    // The whole shipped closure is signed, not only the manifest outputs.
+    let dependency =
+        fs::read_to_string(current.release.join("dependency.narinfo")).expect("dependency");
+    assert!(dependency.contains("Sig: cloakium-test:"), "{dependency}");
 
     let manifest = current.manifest();
     assert_eq!(manifest["signed"], true);
     assert_eq!(manifest["signing"]["verified"], true);
-    assert_eq!(manifest["signing"]["narinfos"], 3);
+    assert_eq!(manifest["signing"]["narinfos"], 4);
     assert_eq!(manifest["signing"]["publicKey"], PUBLIC_KEY);
 
     let notes = fs::read_to_string(current.release.join("release-notes.md")).expect("notes");

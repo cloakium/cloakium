@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "startedAt": "2026-11-14T01:18:49.393Z",
+  "platform": "linux",
+  "arch": "x64",
+  "node": "26.13.0",
+  "system": "x86_64-linux",
+  "sourceRevision": "ee40282702cbac4ca96fe4cfd1e299c3eb775a87",
+  "execution": {
+    "kind": "local",
+    "repository": null,
+    "runId": null
+  },
+  "flakeLock": "c0633582c6b11d33202d720397d4f9b2d5b0d0a7933d6af501cbba11e98aedc6",
+  "checks": [
+    {
+      "name": "browser-version",
+      "command": [
+        "/nix/store/wf9sfa93vfv0h284n5njvnrbvrmvbz3b-chromium-157.0.8103.50/bin/cloakium-chromium",
+        "--version"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 31,
+      "log": "artifacts/browser-version.log"
+    },
+    {
+      "name": "build-library",
+      "command": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 266,
+      "log": "artifacts/build-library.log"
+    },
+    {
+      "name": "typecheck",
+      "command": [
+        "npm",
+        "run",
+        "typecheck"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 212,
+      "log": "artifacts/typecheck.log"
+    },
+    {
+      "name": "unit-and-api",
+      "command": [
+        "npm",
+        "run",
+        "test:node"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 28642,
+      "log": "artifacts/unit-and-api.log"
+    },
+    {
+      "name": "bun-api",
+      "command": [
+        "npm",
+        "run",
+        "test:bun"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 28204,
+      "log": "artifacts/bun-api.log"
+    },
+    {
+      "name": "driver-regressions",
+      "command": [
+        "npm",
+        "run",
+        "test:driver"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 5212,
+      "log": "artifacts/driver-regressions.log"
+    },
+    {
+      "name": "native-regressions",
+      "command": [
+        "npm",
+        "run",
+        "test:native"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 2107,
+      "log": "artifacts/native-regressions.log"
+    }
+  ],
+  "status": "passed",
+  "binary": "/nix/store/wf9sfa93vfv0h284n5njvnrbvrmvbz3b-chromium-157.0.8103.50/bin/cloakium-chromium",
+  "binaryRealpath": "/nix/store/wf9sfa93vfv0h284n5njvnrbvrmvbz3b-chromium-157.0.8103.50/bin/chromium",
+  "playwright": "1.65.0",
+  "driverPatches": {
+    "patched": true,
+    "version": "1.65.0",
+    "upstream": "1.65.0",
+    "patchSet": "playwright-1.65.0",
+    "source": "https://registry.npmjs.org/playwright-core/-/playwright-core-1.65.0.tgz",
+    "license": "Apache-2.0",
+    "patches": "MIT"
+  },
+  "browserVersion": "Chromium 157.0.8103.50",
+  "exitCode": 0,
+  "finishedAt": "2026-11-14T01:19:54.073Z"
+}

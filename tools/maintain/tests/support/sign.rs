@@ -165,7 +165,7 @@ pub fn staged() -> Staged {
         "status": "passed",
         "exitCode": 0,
         "signals": [],
-        "browserVersion": CHROMIUM,
+        "browserVersion": format!("Chromium {CHROMIUM}"),
         "chromium": CHROMIUM,
         "playwright": PLAYWRIGHT,
         "checks": [

@@ -197,6 +197,23 @@ fn a_native_pin_that_disagrees_with_the_actual_browser_is_rejected() {
 }
 
 #[test]
+fn ambiguous_or_partial_evidence_versions_are_rejected() {
+    let current = staged();
+    let mut evidence = read_json(&current.release.join("verification.json"));
+    evidence["browserVersion"] = json!("Chromium 157.0.8103.50 and 158.0.8127.18");
+    write_json(&current.release.join("verification.json"), &evidence);
+    cache::write_checksums(&current.release).expect("checksums");
+    expect_failure(&current.options(), "ambiguous versions");
+
+    let current = staged();
+    let mut evidence = read_json(&current.release.join("verification.json"));
+    evidence["browserVersion"] = json!("Chromium 157.0.8103");
+    write_json(&current.release.join("verification.json"), &evidence);
+    cache::write_checksums(&current.release).expect("checksums");
+    expect_failure(&current.options(), "no 4-component version");
+}
+
+#[test]
 fn a_key_that_does_not_match_the_public_key_is_rejected() {
     let current = staged();
     let mut runner = signer(

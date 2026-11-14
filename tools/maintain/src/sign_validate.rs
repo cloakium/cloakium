@@ -4,7 +4,7 @@
 //! manifest pins, the recorded verification evidence, the flake lock pin and
 //! every NAR payload hash. Nothing is executed.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -292,13 +292,15 @@ pub fn validate_evidence(path: &Path, facts: &Facts) -> Result<()> {
             );
         }
     }
-    let actual = evidence_browser_version(&evidence)
+    let browser = evidence_browser_version(&evidence)
         .context("verification.json does not record the tested browserVersion")?;
+    let parts = facts.chromium.split('.').count();
+    let actual = recorded_version(&browser, parts)?;
     let playwright = evidence_version(&evidence, "playwright")
         .context("verification.json does not record the verified Playwright version")?;
     ensure!(
         actual == facts.chromium,
-        "verification recorded browser {actual}, the release pins the native Chromium {}",
+        "verification recorded browser {browser:?} (Chromium {actual}), the release pins the native Chromium {}",
         facts.chromium
     );
     ensure!(
@@ -365,6 +367,58 @@ pub fn load_narinfos(
     }
     ensure!(!found.is_empty(), "the release has no narinfos");
     Ok(found)
+}
+
+/// Extract exactly one version with `parts` numeric components from recorded
+/// evidence text.
+///
+/// The Node producer records the browser's own `--version` output
+/// (`"Chromium 157.0.8103.50"`), while a staged manifest records the bare
+/// canonical version. Both normalise to one validated numeric version. A
+/// partial match, an extra component, a trailing identifier or two different
+/// versions are rejected, so a version is never accepted by substring accident.
+pub fn recorded_version(value: &str, parts: usize) -> Result<String> {
+    ensure!(parts >= 2, "a version needs at least two components");
+    let bytes = value.as_bytes();
+    let mut found = BTreeSet::new();
+    let mut index = 0;
+    while index < bytes.len() {
+        if !bytes[index].is_ascii_digit() {
+            index += 1;
+            continue;
+        }
+        let boundary_before = index == 0 || {
+            let previous = bytes[index - 1];
+            !(previous.is_ascii_alphanumeric() || previous == b'.')
+        };
+        let start = index;
+        while index < bytes.len() && (bytes[index].is_ascii_digit() || bytes[index] == b'.') {
+            index += 1;
+        }
+        let boundary_after = bytes
+            .get(index)
+            .is_none_or(|next| !next.is_ascii_alphanumeric());
+        if !boundary_before || !boundary_after {
+            continue;
+        }
+        let run = &value[start..index];
+        let components: Vec<&str> = run.split('.').collect();
+        let numeric = components.iter().all(|component| {
+            !component.is_empty() && component.bytes().all(|byte| byte.is_ascii_digit())
+        });
+        if components.len() == parts && numeric {
+            found.insert(run.to_string());
+        }
+    }
+    ensure!(
+        !found.is_empty(),
+        "no {parts}-component version in the recorded browser string {value:?}"
+    );
+    ensure!(
+        found.len() == 1,
+        "ambiguous versions in the recorded browser string {value:?}: {found:?}"
+    );
+    Ok(found.into_iter().next().expect("one version"))
 }
 
 fn evidence_version(evidence: &Value, name: &str) -> Option<String> {

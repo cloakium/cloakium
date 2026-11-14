@@ -130,7 +130,14 @@ where
                 }
             }
             previous_end = Some(hunk.old_start + hunk.old_len.max(1));
-            offset = apply_hunk(document, &patch.name, index, hunk, offset, config.max_offset)?;
+            offset = apply_hunk(
+                document,
+                &patch.name,
+                index,
+                hunk,
+                offset,
+                config.max_offset,
+            )?;
         }
     }
 
@@ -154,9 +161,8 @@ where
     let marker = if let Some(marker_file) = config.marker_file.as_deref() {
         let current = match contents.get(marker_file) {
             Some(text) => text.clone(),
-            None => read(marker_file).map_err(|error| {
-                error.with_context("cannot add the cloakium marker")
-            })?,
+            None => read(marker_file)
+                .map_err(|error| error.with_context("cannot add the cloakium marker"))?,
         };
         let before_hash = match original.get(marker_file) {
             Some(text) => sha256::hex(text.as_bytes()),
@@ -238,7 +244,11 @@ fn apply_hunk(
     }
 
     if matches.len() > 1 {
-        let positions: Vec<String> = matches.iter().take(5).map(|p| (p + 1).to_string()).collect();
+        let positions: Vec<String> = matches
+            .iter()
+            .take(5)
+            .map(|p| (p + 1).to_string())
+            .collect();
         crate::fail!(
             "{patch_name}: hunk {} is ambiguous in the target file (matches at lines {})",
             hunk_index + 1,

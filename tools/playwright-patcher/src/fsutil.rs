@@ -62,12 +62,8 @@ pub fn copy_tree(source: &Path, target: &Path) -> Result<()> {
 fn copy_symlink(from: &Path, to: &Path) -> Result<()> {
     let destination = std::fs::read_link(from)
         .map_err(|error| Failure::new(format!("cannot read link {}: {error}", from.display())))?;
-    std::os::unix::fs::symlink(&destination, to).map_err(|error| {
-        Failure::new(format!(
-            "cannot create symlink {}: {error}",
-            to.display()
-        ))
-    })
+    std::os::unix::fs::symlink(&destination, to)
+        .map_err(|error| Failure::new(format!("cannot create symlink {}: {error}", to.display())))
 }
 
 #[cfg(not(unix))]

@@ -1,0 +1,8 @@
+# Pinned formatting for every Rust crate in this repository.
+#
+# CI runs `cargo fmt --manifest-path <crate>/Cargo.toml -- --check` from an
+# arbitrary host, so formatting must not depend on a user-level rustfmt config
+# or on rustfmt defaults that can change between toolchains.
+max_width = 100
+style_edition = "2021"
+newline_style = "Unix"

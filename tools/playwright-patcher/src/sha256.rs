@@ -36,8 +36,7 @@ pub fn digest(data: &[u8]) -> [u8; 32] {
     let mut schedule = [0u32; 64];
     for chunk in message.chunks_exact(64) {
         for (index, word) in chunk.chunks_exact(4).enumerate() {
-            schedule[index] =
-                u32::from_be_bytes([word[0], word[1], word[2], word[3]]);
+            schedule[index] = u32::from_be_bytes([word[0], word[1], word[2], word[3]]);
         }
         for index in 16..64 {
             let s0 = schedule[index - 15].rotate_right(7)

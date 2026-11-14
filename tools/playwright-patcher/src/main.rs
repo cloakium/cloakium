@@ -145,8 +145,11 @@ fn apply_command_with(options: Options) -> Result<()> {
         marker_file: options.marker.clone(),
         max_offset: options.max_offset,
     };
-    let (report, contents) =
-        apply::replay(&patches, |relative| fsutil::read_text(&source.join(relative)), &config)?;
+    let (report, contents) = apply::replay(
+        &patches,
+        |relative| fsutil::read_text(&source.join(relative)),
+        &config,
+    )?;
 
     summarize(&report);
     if options.check {
@@ -231,9 +234,9 @@ fn parse_options(args: &[String]) -> Result<Options> {
             }
             "--max-offset" => {
                 let value = take_value(args, &mut index, &key, inline)?;
-                let offset: usize = value
-                    .parse()
-                    .map_err(|_| Failure::new(format!("--max-offset expects a number, got {value:?}")))?;
+                let offset: usize = value.parse().map_err(|_| {
+                    Failure::new(format!("--max-offset expects a number, got {value:?}"))
+                })?;
                 options.max_offset = Some(offset);
             }
             "--check" => {

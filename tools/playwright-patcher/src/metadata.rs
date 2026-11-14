@@ -79,9 +79,9 @@ fn require_string(object: &Map<String, Value>, file: &str, key: &str) -> Result<
 }
 
 fn validate_package_name(file: &str, name: &str) -> Result<()> {
-    let valid = name
-        .chars()
-        .all(|character| character.is_ascii_alphanumeric() || matches!(character, '@' | '/' | '-' | '_' | '.'));
+    let valid = name.chars().all(|character| {
+        character.is_ascii_alphanumeric() || matches!(character, '@' | '/' | '-' | '_' | '.')
+    });
     if !valid {
         crate::fail!("{file}: implausible package name {name:?}");
     }
@@ -92,8 +92,8 @@ fn validate_version(file: &str, version: &str) -> Result<()> {
     let valid = version
         .chars()
         .all(|character| character.is_ascii_alphanumeric() || matches!(character, '.' | '-' | '+'));
-    let looks_like_semver = version.starts_with(|character: char| character.is_ascii_digit())
-        && version.contains('.');
+    let looks_like_semver =
+        version.starts_with(|character: char| character.is_ascii_digit()) && version.contains('.');
     if !valid || !looks_like_semver {
         crate::fail!("{file}: implausible package version {version:?}");
     }
@@ -136,22 +136,45 @@ mod tests {
 
     #[test]
     fn derives_marker_from_the_package_being_patched() {
-        let (rendered, marker) = expand(PACKAGE, "package.json", "playwright-1.66.0").expect("expand");
+        let (rendered, marker) =
+            expand(PACKAGE, "package.json", "playwright-1.66.0").expect("expand");
         let value: serde_json::Value = serde_json::from_str(&rendered).expect("valid json");
-        let cloakium = value.get("cloakium").expect("marker").as_object().expect("object");
+        let cloakium = value
+            .get("cloakium")
+            .expect("marker")
+            .as_object()
+            .expect("object");
 
-        assert_eq!(cloakium.get("patched"), Some(&serde_json::Value::Bool(true)));
-        assert_eq!(cloakium.get("version"), Some(&serde_json::Value::String("1.66.0".into())));
-        assert_eq!(cloakium.get("upstream"), Some(&serde_json::Value::String("1.66.0".into())));
-        assert_eq!(cloakium.get("patchSet"), Some(&serde_json::Value::String("playwright-1.66.0".into())));
-        assert_eq!(cloakium.get("license"), Some(&serde_json::Value::String("Apache-2.0".into())));
+        assert_eq!(
+            cloakium.get("patched"),
+            Some(&serde_json::Value::Bool(true))
+        );
+        assert_eq!(
+            cloakium.get("version"),
+            Some(&serde_json::Value::String("1.66.0".into()))
+        );
+        assert_eq!(
+            cloakium.get("upstream"),
+            Some(&serde_json::Value::String("1.66.0".into()))
+        );
+        assert_eq!(
+            cloakium.get("patchSet"),
+            Some(&serde_json::Value::String("playwright-1.66.0".into()))
+        );
+        assert_eq!(
+            cloakium.get("license"),
+            Some(&serde_json::Value::String("Apache-2.0".into()))
+        );
         assert_eq!(marker.version, "1.66.0");
         assert_eq!(marker.package, "playwright-core");
         assert_eq!(
             marker.source,
             "https://registry.npmjs.org/playwright-core/-/playwright-core-1.66.0.tgz"
         );
-        assert!(!rendered.contains("1.65.0"), "must not leak a hardcoded release");
+        assert!(
+            !rendered.contains("1.65.0"),
+            "must not leak a hardcoded release"
+        );
         // Key order: name, version, cloakium, license, bin
         let keys: Vec<&String> = value.as_object().expect("object").keys().collect();
         assert_eq!(keys, vec!["name", "version", "cloakium", "license", "bin"]);
@@ -167,11 +190,16 @@ mod tests {
 
     #[test]
     fn rejects_implausible_metadata() {
-        let error = expand("{\"name\":\"playwright-core\"}", "package.json", "set").expect_err("missing version");
+        let error = expand("{\"name\":\"playwright-core\"}", "package.json", "set")
+            .expect_err("missing version");
         assert!(error.message().contains("version"), "{error}");
 
-        let error = expand("{\"name\":\"x\",\"version\":\"not a version\"}", "package.json", "set")
-            .expect_err("bad version");
+        let error = expand(
+            "{\"name\":\"x\",\"version\":\"not a version\"}",
+            "package.json",
+            "set",
+        )
+        .expect_err("bad version");
         assert!(error.message().contains("implausible"), "{error}");
 
         let error = expand("[]", "package.json", "set").expect_err("not an object");

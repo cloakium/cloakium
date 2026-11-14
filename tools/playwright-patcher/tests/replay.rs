@@ -120,7 +120,8 @@ fn replay(
 #[test]
 fn applies_patches_in_order_without_fuzz() {
     let (sandbox, patches) = setup("ok", PATCH_ONE, PATCH_TWO);
-    let (report, rendered, _) = replay(&sandbox, &patches, &config("playwright-test")).expect("replay");
+    let (report, rendered, _) =
+        replay(&sandbox, &patches, &config("playwright-test")).expect("replay");
 
     assert_eq!(
         rendered,
@@ -141,19 +142,36 @@ fn marker_is_derived_from_the_package_being_patched() {
         &PACKAGE.replace("\"1.65.0\"", "\"1.66.0\""),
     );
 
-    let (report, _, package) = replay(&sandbox, &patches, &config("playwright-1.66.0")).expect("replay");
+    let (report, _, package) =
+        replay(&sandbox, &patches, &config("playwright-1.66.0")).expect("replay");
     let package = package.expect("package");
     let value: serde_json::Value = serde_json::from_str(&package).expect("valid json");
-    let marker = value.get("cloakium").expect("marker").as_object().expect("object");
+    let marker = value
+        .get("cloakium")
+        .expect("marker")
+        .as_object()
+        .expect("object");
 
-    assert_eq!(marker.get("version").and_then(|v| v.as_str()), Some("1.66.0"));
-    assert_eq!(marker.get("upstream").and_then(|v| v.as_str()), Some("1.66.0"));
-    assert_eq!(marker.get("patchSet").and_then(|v| v.as_str()), Some("playwright-1.66.0"));
+    assert_eq!(
+        marker.get("version").and_then(|v| v.as_str()),
+        Some("1.66.0")
+    );
+    assert_eq!(
+        marker.get("upstream").and_then(|v| v.as_str()),
+        Some("1.66.0")
+    );
+    assert_eq!(
+        marker.get("patchSet").and_then(|v| v.as_str()),
+        Some("playwright-1.66.0")
+    );
     assert_eq!(
         marker.get("source").and_then(|v| v.as_str()),
         Some("https://registry.npmjs.org/playwright-core/-/playwright-core-1.66.0.tgz")
     );
-    assert!(!package.contains("1.65.0"), "stale release leaked into the marker");
+    assert!(
+        !package.contains("1.65.0"),
+        "stale release leaked into the marker"
+    );
 
     let recorded = report.marker.expect("marker report");
     assert_eq!(recorded.version, "1.66.0");
@@ -175,8 +193,10 @@ fn marker_can_be_disabled() {
 #[test]
 fn is_deterministic_across_runs() {
     let (sandbox, patches) = setup("determinism", PATCH_ONE, PATCH_TWO);
-    let (first_report, first, first_package) = replay(&sandbox, &patches, &config("set")).expect("first");
-    let (second_report, second, second_package) = replay(&sandbox, &patches, &config("set")).expect("second");
+    let (first_report, first, first_package) =
+        replay(&sandbox, &patches, &config("set")).expect("first");
+    let (second_report, second, second_package) =
+        replay(&sandbox, &patches, &config("set")).expect("second");
     assert_eq!(first, second);
     assert_eq!(first_package, second_package);
     assert_eq!(
@@ -246,7 +266,10 @@ fn rejects_ambiguous_hunk_anywhere_in_the_file() {
         "--- a/lib/target.js\n+++ b/lib/target.js\n@@ -1,3 +1,3 @@\n a\n-b\n+B\n c\n",
     );
     let error = replay(&sandbox, &sandbox.path("patches"), &config("set")).expect_err("must fail");
-    assert!(error.message().contains("ambiguous"), "unexpected error: {error}");
+    assert!(
+        error.message().contains("ambiguous"),
+        "unexpected error: {error}"
+    );
 }
 
 #[test]
@@ -267,11 +290,17 @@ fn applies_at_large_legitimate_offset() {
 #[test]
 fn max_offset_is_opt_in_and_reports_the_hint() {
     let (sandbox, patches) = setup("max-offset", PATCH_ONE, PATCH_TWO);
-    sandbox.write("src/lib/target.js", &format!("{}{SOURCE}", "filler\n".repeat(500)));
+    sandbox.write(
+        "src/lib/target.js",
+        &format!("{}{SOURCE}", "filler\n".repeat(500)),
+    );
     let mut options = config("set");
     options.max_offset = Some(10);
     let error = replay(&sandbox, &patches, &options).expect_err("must fail");
-    assert!(error.message().contains("--max-offset"), "unexpected error: {error}");
+    assert!(
+        error.message().contains("--max-offset"),
+        "unexpected error: {error}"
+    );
 }
 
 #[test]
@@ -280,7 +309,10 @@ fn rejects_missing_target_file() {
     sandbox.write("patches/0001-first.patch", PATCH_ONE);
     sandbox.write("src/package.json", PACKAGE);
     let error = replay(&sandbox, &sandbox.path("patches"), &config("set")).expect_err("must fail");
-    assert!(error.message().contains("cannot read"), "unexpected error: {error}");
+    assert!(
+        error.message().contains("cannot read"),
+        "unexpected error: {error}"
+    );
 }
 
 #[test]
@@ -308,7 +340,10 @@ fn binary() -> &'static str {
 fn cli_applies_and_writes_manifest() {
     let sandbox = Sandbox::new("cli-apply");
     sandbox.write("src/lib/target.js", SOURCE);
-    sandbox.write("src/package.json", &PACKAGE.replace("\"1.65.0\"", "\"1.66.0\""));
+    sandbox.write(
+        "src/package.json",
+        &PACKAGE.replace("\"1.65.0\"", "\"1.66.0\""),
+    );
     sandbox.write("patches/0001-first.patch", PATCH_ONE);
     sandbox.write("patches/0002-second.patch", PATCH_TWO);
     let target = sandbox.path("out");
@@ -427,7 +462,8 @@ fn repo_patch_set_has_no_metadata_hunks() {
         )
         .expect("patch parses");
         assert_ne!(
-            file.target, "package.json",
+            file.target,
+            "package.json",
             "{} must not patch package.json; the marker is generated at apply time",
             path.display()
         );

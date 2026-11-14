@@ -12,10 +12,7 @@ pub fn render(patch_set: &str, report: &Report) -> String {
     out.push_str("{\n");
     out.push_str("  \"format\": 1,\n");
     out.push_str("  \"tool\": \"playwright-patcher\",\n");
-    out.push_str(&format!(
-        "  \"patchSet\": {},\n",
-        quote(patch_set)
-    ));
+    out.push_str(&format!("  \"patchSet\": {},\n", quote(patch_set)));
     out.push_str("  \"patches\": [\n");
     for (index, patch) in report.patches.iter().enumerate() {
         let comma = if index + 1 == report.patches.len() {
@@ -52,7 +49,10 @@ pub fn render(patch_set: &str, report: &Report) -> String {
             out.push_str(&format!("    \"file\": {},\n", quote(&marker.file)));
             out.push_str(&format!("    \"package\": {},\n", quote(&marker.package)));
             out.push_str(&format!("    \"version\": {},\n", quote(&marker.version)));
-            out.push_str(&format!("    \"patchSet\": {},\n", quote(&marker.patch_set)));
+            out.push_str(&format!(
+                "    \"patchSet\": {},\n",
+                quote(&marker.patch_set)
+            ));
             out.push_str(&format!("    \"source\": {}\n", quote(&marker.source)));
             out.push_str("  }\n");
         }

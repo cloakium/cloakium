@@ -62,11 +62,14 @@ impl PatchFile {
             if line.starts_with("--- ") {
                 let old = strip_prefix_path(line, "--- ")?;
                 index += 1;
-                let new_line = lines
-                    .get(index)
-                    .ok_or_else(|| Failure::new(format!("{name}: missing +++ header after --- ")))?;
+                let new_line = lines.get(index).ok_or_else(|| {
+                    Failure::new(format!("{name}: missing +++ header after --- "))
+                })?;
                 if !new_line.starts_with("+++ ") {
-                    crate::fail!("{name}: expected '+++ ' header, found {:?}", truncate(new_line));
+                    crate::fail!(
+                        "{name}: expected '+++ ' header, found {:?}",
+                        truncate(new_line)
+                    );
                 }
                 let new = strip_prefix_path(new_line, "+++ ")?;
                 if target.is_some() {
@@ -106,7 +109,11 @@ impl PatchFile {
                 continue;
             }
 
-            crate::fail!("{name}: unexpected line {}: {:?}", index + 1, truncate(line));
+            crate::fail!(
+                "{name}: unexpected line {}: {:?}",
+                index + 1,
+                truncate(line)
+            );
         }
 
         let target = target
@@ -164,7 +171,10 @@ fn parse_hunk(name: &str, lines: &[&str], start: usize) -> Result<(Hunk, usize)>
             LineKind::Add => consumed_new += 1,
         }
         if consumed_old > old_len || consumed_new > new_len {
-            crate::fail!("{name}: hunk at line {} exceeds its declared size", start + 1);
+            crate::fail!(
+                "{name}: hunk at line {} exceeds its declared size",
+                start + 1
+            );
         }
         collected.push(HunkLine { kind, text });
         index += 1;
@@ -191,20 +201,32 @@ fn parse_hunk(name: &str, lines: &[&str], start: usize) -> Result<(Hunk, usize)>
 
 fn parse_hunk_header(name: &str, header: &str) -> Result<(usize, usize, usize, usize)> {
     // "@@ -12,7 +12,9 @@ optional section heading"
-    let rest = header
-        .strip_prefix("@@ ")
-        .ok_or_else(|| Failure::new(format!("{name}: malformed hunk header {:?}", truncate(header))))?;
-    let end = rest
-        .find(" @@")
-        .ok_or_else(|| Failure::new(format!("{name}: malformed hunk header {:?}", truncate(header))))?;
+    let rest = header.strip_prefix("@@ ").ok_or_else(|| {
+        Failure::new(format!(
+            "{name}: malformed hunk header {:?}",
+            truncate(header)
+        ))
+    })?;
+    let end = rest.find(" @@").ok_or_else(|| {
+        Failure::new(format!(
+            "{name}: malformed hunk header {:?}",
+            truncate(header)
+        ))
+    })?;
     let ranges = &rest[..end];
     let mut parts = ranges.split(' ');
-    let old = parts
-        .next()
-        .ok_or_else(|| Failure::new(format!("{name}: malformed hunk header {:?}", truncate(header))))?;
-    let new = parts
-        .next()
-        .ok_or_else(|| Failure::new(format!("{name}: malformed hunk header {:?}", truncate(header))))?;
+    let old = parts.next().ok_or_else(|| {
+        Failure::new(format!(
+            "{name}: malformed hunk header {:?}",
+            truncate(header)
+        ))
+    })?;
+    let new = parts.next().ok_or_else(|| {
+        Failure::new(format!(
+            "{name}: malformed hunk header {:?}",
+            truncate(header)
+        ))
+    })?;
     if parts.next().is_some() {
         crate::fail!("{name}: malformed hunk header {:?}", truncate(header));
     }
@@ -215,7 +237,9 @@ fn parse_hunk_header(name: &str, header: &str) -> Result<(usize, usize, usize, u
 
 fn parse_range(name: &str, value: &str, sign: char) -> Result<(usize, usize)> {
     let body = value.strip_prefix(sign).ok_or_else(|| {
-        Failure::new(format!("{name}: hunk range {value:?} is missing its {sign} prefix"))
+        Failure::new(format!(
+            "{name}: hunk range {value:?} is missing its {sign} prefix"
+        ))
     })?;
     let (start, len) = match body.split_once(',') {
         Some((start, len)) => (start, len),
@@ -284,7 +308,10 @@ mod tests {
         assert_eq!(patch.target, "lib/x.js");
         assert_eq!(patch.hunks.len(), 1);
         let hunk = &patch.hunks[0];
-        assert_eq!((hunk.old_start, hunk.old_len, hunk.new_start, hunk.new_len), (2, 3, 2, 4));
+        assert_eq!(
+            (hunk.old_start, hunk.old_len, hunk.new_start, hunk.new_len),
+            (2, 3, 2, 4)
+        );
         assert_eq!(hunk.old_lines(), vec!["two", "three", "four"]);
         assert_eq!(hunk.new_lines(), vec!["two", "THREE", "extra", "four"]);
         assert_eq!(hunk.lines[0].kind, LineKind::Context);

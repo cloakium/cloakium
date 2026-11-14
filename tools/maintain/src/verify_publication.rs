@@ -51,10 +51,29 @@ pub fn prepare(
     release::validate_revision(&options.revision)?;
     let release_json = util::read_json(&options.release_json)
         .context("failed to read the release JSON from the API")?;
-    let published = published_assets(&release_json)?;
+    verify_release(
+        &release_json,
+        &options.checksums,
+        &options.manifest,
+        &options.revision,
+        reporter,
+    )
+}
+
+/// Verify an already decoded release JSON. `upload-release` builds the same
+/// JSON from the asset list it re-reads after uploading, so both commands
+/// share one definition of a complete publication.
+pub fn verify_release(
+    release_json: &Value,
+    checksums_path: &Path,
+    manifest_path: &Path,
+    revision: &str,
+    reporter: &Reporter,
+) -> Result<VerifyPublicationOutcome> {
+    let published = published_assets(release_json)?;
     let checksums = parse_checksums(
-        &fs::read_to_string(&options.checksums)
-            .with_context(|| format!("failed to read {}", options.checksums.display()))?,
+        &fs::read_to_string(checksums_path)
+            .with_context(|| format!("failed to read {}", checksums_path.display()))?,
     )?;
 
     // The checksums file cannot list itself, so its integrity comes from the
@@ -63,11 +82,11 @@ pub fn prepare(
         .get(SUMS_ASSET)
         .with_context(|| format!("the published release has no {SUMS_ASSET} asset"))?;
     ensure!(
-        util::digest(&options.checksums)? == sums_asset.digest,
+        util::digest(checksums_path)? == sums_asset.digest,
         "the downloaded {SUMS_ASSET} does not match the published asset digest"
     );
     ensure!(
-        file_size(&options.checksums)? == sums_asset.size,
+        file_size(checksums_path)? == sums_asset.size,
         "the downloaded {SUMS_ASSET} is not the published size"
     );
 
@@ -109,26 +128,24 @@ pub fn prepare(
         );
     }
 
-    let manifest_digest = util::digest(&options.manifest)?;
+    let manifest_digest = util::digest(manifest_path)?;
     ensure!(
         checksums.get(MANIFEST_ASSET).map(String::as_str) == Some(manifest_digest.as_str()),
         "the downloaded {MANIFEST_ASSET} does not match {SUMS_ASSET}"
     );
     ensure!(
-        file_size(&options.manifest)?
-            == published.get(MANIFEST_ASSET).expect("required asset").size,
+        file_size(manifest_path)? == published.get(MANIFEST_ASSET).expect("required asset").size,
         "the downloaded {MANIFEST_ASSET} is not the published size"
     );
 
-    let manifest = util::read_json(&options.manifest)?;
+    let manifest = util::read_json(manifest_path)?;
     let source_revision = manifest
         .get("sourceRevision")
         .and_then(Value::as_str)
         .context("the published manifest has no sourceRevision")?;
     ensure!(
-        source_revision == options.revision,
-        "the published release records source {source_revision}, expected {}",
-        options.revision
+        source_revision == revision,
+        "the published release records source {source_revision}, expected {revision}"
     );
     let tag = manifest
         .get("tag")
@@ -154,13 +171,13 @@ pub fn prepare(
         serde_json::to_string_pretty(&serde_json::json!({
             "verified": true,
             "tag": tag,
-            "revision": options.revision,
+            "revision": revision,
             "assets": published.len(),
         }))?
     );
     reporter.emit("verified", "true")?;
     reporter.emit("tag", &tag)?;
-    reporter.emit("revision", &options.revision)?;
+    reporter.emit("revision", revision)?;
     reporter.emit("assets", &published.len().to_string())?;
 
     Ok(VerifyPublicationOutcome {
@@ -219,7 +236,8 @@ fn published_assets(release: &Value) -> Result<BTreeMap<String, PublishedAsset>>
     Ok(published)
 }
 
-fn parse_checksums(text: &str) -> Result<BTreeMap<String, String>> {
+/// Parse `SHA256SUMS`: `<64 hex>  <asset name>` per line, unique names.
+pub fn parse_checksums(text: &str) -> Result<BTreeMap<String, String>> {
     let mut checksums = BTreeMap::new();
     for line in text.lines() {
         if line.trim().is_empty() {

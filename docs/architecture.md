@@ -80,6 +80,12 @@ proposal job validates pin-only JSON/lock changes using trusted-main code before
 creating the update branch. The native builder similarly has read-only access;
 its output artifacts are data, not publication scripts.
 
+The Rust uploader hashes local assets, resumes only missing or differing draft
+assets, and verifies GitHub's server digests before promotion. Uploads are serial,
+spaced eight seconds apart, and capped at 440 content operations per rolling hour.
+Rate-limit retries back off within a single three-hour deadline. A fresh cache
+release can therefore take roughly two hours to upload without bursting API limits.
+
 ## License boundary
 
 Original Cloakium source and patches are MIT. A modified Chromium binary still

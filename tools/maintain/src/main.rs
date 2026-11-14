@@ -10,11 +10,13 @@ use cloakium_maintain::release::{self, ReleaseOptions, DEFAULT_BUILD_TIMEOUT, DE
 use cloakium_maintain::report::Reporter;
 use cloakium_maintain::sign_release::{self, SignReleaseOptions};
 use cloakium_maintain::update::{self, UpdateOptions};
+use cloakium_maintain::upload_pace::SystemClock;
+use cloakium_maintain::upload_release::{self, UploadOptions, DEFAULT_TIMEOUT_SECS};
 use cloakium_maintain::util;
 use cloakium_maintain::validate_update::{self, ValidateUpdateOptions};
 use cloakium_maintain::verify_publication::{self, VerifyPublicationOptions};
 
-/// Prepare upstream candidates, stage and sign releases, verify publications.
+/// Prepare upstream candidates, stage and sign releases, upload drafts.
 #[derive(Debug, Parser)]
 #[command(
     name = "cloakium-maintain",
@@ -35,6 +37,14 @@ use cloakium_maintain::verify_publication::{self, VerifyPublicationOptions};
         `sign-release` re-verifies a staged release and signs every narinfo in the cache \
         (the manifest outputs and their runtime closure, including custom patched paths) with \
         the trusted key. It runs no code from the staged artifacts. Signing keys are never printed.\n\n\
+        `upload-release` resumes a partially uploaded draft release. It hashes the signed tree \
+        against SHA256SUMS locally first, reads the draft's assets once, uploads only the assets \
+        that are missing or differ (deleting a differing asset by its exact id first), keeps one \
+        upload in flight with 8 seconds between content-generating operations (about 450 per hour, \
+        below GitHub's documented 80/minute and 500/hour limits), waits out rate limits, and then \
+        re-checks every server digest against SHA256SUMS before it succeeds. `gh` reads GH_TOKEN \
+        from the environment; the token is never printed. The whole command is bounded by \
+        --timeout (default 10800 seconds, three hours); the workflow job timeout is separate.\n\n\
         `verify-publication` cross-checks an existing release's API JSON, SHA256SUMS and manifest \
         without network access, so re-running a publication is safe.\n\n\
         Every command reports workflow fields on stdout and in $GITHUB_OUTPUT.",
@@ -56,8 +66,42 @@ enum Commands {
     Release(ReleaseArgs),
     /// Re-verify and sign a staged release with the trusted publisher key
     SignRelease(SignReleaseArgs),
+    /// Resume a draft release with paced uploads and a verified final state
+    UploadRelease(UploadReleaseArgs),
     /// Verify an already published release from its API JSON and metadata
     VerifyPublication(VerifyPublicationArgs),
+}
+
+#[derive(Debug, Args)]
+struct UploadReleaseArgs {
+    /// Signed, flat release directory produced by `release` and `sign-release`
+    #[arg(long, value_name = "DIR")]
+    input: PathBuf,
+
+    /// Repository holding the draft release, as owner/repo
+    #[arg(long, value_name = "OWNER/REPO")]
+    repository: String,
+
+    /// Draft release tag, chromium-<version>-pw-<version>-<revision prefix>
+    #[arg(long, value_name = "TAG")]
+    tag: String,
+
+    /// Full 40-character lowercase commit ID recorded in the manifest
+    #[arg(long, value_name = "SHA")]
+    revision: String,
+
+    /// Wall-clock budget for the whole run, in seconds
+    #[arg(
+        long,
+        value_name = "SECONDS",
+        default_value_t = DEFAULT_TIMEOUT_SECS,
+        long_help = "Wall-clock budget for this command, in seconds; defaults to 10800 (three \
+                     hours). It starts before the local hashing pass and covers pacing, backoff \
+                     and every child command. The workflow job timeout is separate: give the job \
+                     more than this budget plus setup time. Resuming with a larger value is safe \
+                     because complete assets are skipped."
+    )]
+    timeout: u64,
 }
 
 #[derive(Debug, Args)]
@@ -244,6 +288,17 @@ fn execute(cli: Cli) -> Result<()> {
                 public_key: args.public_key,
             };
             sign_release::prepare(&options, &mut runner, &reporter)?;
+        }
+        Commands::UploadRelease(args) => {
+            let options = UploadOptions {
+                input: args.input,
+                repository: args.repository,
+                tag: args.tag,
+                revision: args.revision,
+                timeout: Duration::from_secs(args.timeout),
+            };
+            let mut clock = SystemClock::new();
+            upload_release::prepare(&options, &mut runner, &mut clock, &reporter)?;
         }
         Commands::VerifyPublication(args) => {
             let options = VerifyPublicationOptions {

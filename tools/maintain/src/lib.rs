@@ -8,6 +8,7 @@
 //! * [`release`] stages a flat Nix cache, unsigned when asked.
 //! * [`sign_release`] re-verifies a staged release and signs it with the
 //!   trusted publisher key.
+//! * [`upload_release`] resumes a draft release with paced, verified uploads.
 //! * [`verify_publication`] cross-checks an already published release without
 //!   any network access.
 //!
@@ -28,6 +29,10 @@ pub mod sign_release;
 pub mod sign_validate;
 pub mod update;
 pub mod update_candidate;
+pub mod upload_pace;
+pub mod upload_plan;
+pub mod upload_release;
+pub mod upload_remote;
 pub mod util;
 pub mod validate_update;
 pub mod verify_publication;

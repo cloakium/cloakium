@@ -37,6 +37,13 @@ impl Reporter {
         Self::default()
     }
 
+    /// Compact progress line on stdout; never written to `$GITHUB_OUTPUT`.
+    pub fn note(&self, message: &str) {
+        if self.echo {
+            println!("{message}");
+        }
+    }
+
     pub fn emit(&self, name: &str, value: &str) -> Result<()> {
         ensure!(!name.is_empty(), "an output name cannot be empty");
         ensure!(

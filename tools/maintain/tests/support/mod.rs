@@ -5,6 +5,8 @@ pub mod release;
 pub mod sign;
 pub mod update;
 pub mod update_candidate;
+pub mod upload;
+pub mod upload_mock;
 
 use std::fs;
 use std::path::{Path, PathBuf};

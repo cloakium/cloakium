@@ -5,12 +5,14 @@
   nix,
   nodejs_26,
   gitMinimal,
+  gh,
 }:
 let
   runtimePath = lib.makeBinPath [
     nix
     nodejs_26
     gitMinimal
+    gh
   ];
   source = lib.fileset.toSource {
     root = ../tools/maintain;
@@ -39,13 +41,16 @@ rustPlatform.buildRustPackage {
   doCheck = true;
 
   meta = {
-    description = "Cloakium upstream candidate preparation and staged release signing";
+    description = "Cloakium upstream candidate preparation, staged release signing and throttled draft uploads";
     longDescription = ''
       `cloakium-maintain update` tracks the latest stable playwright-core and
       Chromium pin without publishing anything. `validate-update` accepts only
       the pin changes an update may make. `release` stages a flat Nix cache,
       optionally unsigned, and `sign-release` re-verifies and signs it with the
-      trusted publisher key.
+      trusted publisher key. `upload-release` resumes a draft release with one
+      upload in flight at a time, spaced content operations, and a final
+      server-digest check against the signed checksums. The wrapper provides
+      `gh` so uploads need no separately installed GitHub CLI.
     '';
     license = lib.licenses.mit;
     mainProgram = "cloakium-maintain";

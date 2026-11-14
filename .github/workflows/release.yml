@@ -267,7 +267,7 @@ jobs:
     needs: build
     if: always() && !cancelled() && github.ref == 'refs/heads/main' && (needs.build.result == 'success' || (needs.build.result == 'skipped' && inputs.bootstrap_tag != ''))
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 210
     environment: release
     permissions:
       contents: write
@@ -376,8 +376,16 @@ jobs:
             gh release create "$TAG" --target "$REVISION" --draft --title "$TAG" \
               --notes-file artifacts/release/release-notes.md
           fi
-          gh release upload "$TAG" artifacts/release/* --clobber
           echo "already_published=false" >> "$GITHUB_OUTPUT"
+      - name: Upload and verify draft assets with bounded pacing
+        if: steps.draft.outputs.already_published != 'true'
+        timeout-minutes: 185
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          "${{ steps.tools.outputs.maintain }}/bin/cloakium-maintain" upload-release \
+            --input artifacts/release --repository "$GITHUB_REPOSITORY" \
+            --tag "$TAG" --revision "$REVISION" --timeout 10800
       - name: Promote the verified candidate with freshness protection
         if: inputs.candidate != ''
         env:

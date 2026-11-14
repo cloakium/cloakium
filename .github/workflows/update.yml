@@ -111,5 +111,5 @@ jobs:
           revision=$("$jj" log --no-graph -r @ -T commit_id)
           candidate="updates/${revision:0:12}"
           "$jj" bookmark set "$candidate" -r @
-          "$jj" git push --bookmark "$candidate" --allow-new
+          "$jj" git push --bookmark "$candidate"
           gh workflow run release.yml --ref main -f revision="$revision" -f candidate="$candidate"

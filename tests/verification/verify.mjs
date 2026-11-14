@@ -76,6 +76,7 @@ try {
   process.exitCode = 1;
   console.error(error.message);
 } finally {
+  evidence.exitCode = evidence.status === "passed" ? 0 : 1;
   evidence.finishedAt = new Date().toISOString();
   save();
 }

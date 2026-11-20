@@ -1,0 +1,73 @@
+{
+  "schema": "cloakium.audit.catalog/1",
+  "generatedAt": "2026-01-01T00:00:20.000Z",
+  "sources": [
+    {
+      "path": "/var/lib/cloakium-audit/compare/example.json",
+      "sha256": "9999999999999999999999999999999999999999999999999999999999999999",
+      "schema": "cloakium.audit.compare/1"
+    }
+  ],
+  "rows": [
+    {
+      "featureId": "navigator.webdriver",
+      "families": ["navigator"],
+      "classifications": ["capability-difference", "unknown"],
+      "originalClassifications": [],
+      "statuses": ["fail", "pass", "unknown"],
+      "checks": ["webdriver-hidden"],
+      "modes": ["headless"],
+      "gap": true,
+      "unknown": true,
+      "details": [
+        "candidate failed a check that the baseline passed",
+        "a second run did not execute"
+      ],
+      "confounders": ["browser-version"],
+      "policyIds": [],
+      "justifications": [],
+      "provenance": [
+        {
+          "role": "baseline",
+          "runId": "run-fixture",
+          "configurationId": "baseline-headless-1",
+          "targetId": "baseline",
+          "mode": "headless",
+          "iteration": 1
+        },
+        {
+          "role": "candidate",
+          "runId": "run-fixture-candidate",
+          "configurationId": "candidate-headless-1",
+          "targetId": "candidate",
+          "mode": "headless",
+          "iteration": 1
+        }
+      ],
+      "unknownProvenance": [
+        {
+          "role": "candidate",
+          "runId": "run-fixture-candidate",
+          "configurationId": "candidate-headless-2",
+          "targetId": "candidate",
+          "mode": "headless",
+          "iteration": 2
+        }
+      ],
+      "sources": [
+        {
+          "path": "/var/lib/cloakium-audit/compare/example.json",
+          "sha256": "9999999999999999999999999999999999999999999999999999999999999999",
+          "schema": "cloakium.audit.compare/1"
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "features": 1,
+    "gaps": 1,
+    "unknown": 1,
+    "intentional": 0,
+    "sources": 1
+  }
+}

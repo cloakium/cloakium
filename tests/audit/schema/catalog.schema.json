@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cloakium.audit.catalog/1",
+  "title": "Cloakium audit gap catalogue",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "generatedAt", "sources", "rows", "summary"],
+  "properties": {
+    "schema": { "const": "cloakium.audit.catalog/1" },
+    "generatedAt": { "type": "string", "minLength": 1 },
+    "sources": { "type": "array", "items": { "$ref": "#/$defs/sourceRef" } },
+    "rows": { "type": "array", "items": { "$ref": "#/$defs/catalogRow" } },
+    "summary": { "$ref": "#/$defs/summary" }
+  },
+  "$defs": {
+    "sourceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "schema"],
+      "properties": {
+        "path": { "type": "string", "pattern": "^/" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "schema": { "type": "string", "minLength": 1 }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "runId", "configurationId", "targetId", "mode", "iteration"],
+      "properties": {
+        "role": { "type": "string", "minLength": 1 },
+        "runId": { "type": "string", "minLength": 1 },
+        "configurationId": { "type": "string", "minLength": 1 },
+        "targetId": { "type": "string", "minLength": 1 },
+        "mode": { "enum": ["headless", "headed"] },
+        "iteration": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "catalogRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "featureId", "families", "classifications", "originalClassifications",
+        "statuses", "checks", "modes", "gap", "unknown", "details",
+        "confounders", "policyIds", "justifications", "provenance",
+        "unknownProvenance", "sources"
+      ],
+      "properties": {
+        "featureId": { "type": "string", "minLength": 1 },
+        "families": { "type": "array", "items": { "type": "string" } },
+        "classifications": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "originalClassifications": { "type": "array", "items": { "type": "string" } },
+        "statuses": { "type": "array", "items": { "type": "string" } },
+        "checks": { "type": "array", "items": { "type": "string" } },
+        "modes": { "type": "array", "items": { "type": "string" } },
+        "gap": { "type": "boolean" },
+        "unknown": { "type": "boolean" },
+        "details": { "type": "array", "items": { "type": "string" } },
+        "confounders": { "type": "array", "items": { "type": "string" } },
+        "policyIds": { "type": "array", "items": { "type": "string" } },
+        "justifications": { "type": "array", "items": { "type": "string" } },
+        "provenance": { "type": "array", "items": { "$ref": "#/$defs/provenance" } },
+        "unknownProvenance": { "type": "array", "items": { "$ref": "#/$defs/provenance" } },
+        "sources": { "type": "array", "items": { "$ref": "#/$defs/sourceRef" } }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["features", "gaps", "unknown", "intentional", "sources"],
+      "properties": {
+        "features": { "type": "integer", "minimum": 0 },
+        "gaps": { "type": "integer", "minimum": 0 },
+        "unknown": { "type": "integer", "minimum": 0 },
+        "intentional": { "type": "integer", "minimum": 0 },
+        "sources": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

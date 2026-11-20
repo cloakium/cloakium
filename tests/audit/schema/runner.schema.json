@@ -1,0 +1,787 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cloakium.audit.runner/1",
+  "title": "Cloakium audit runner protocol fragment",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "runs",
+    "errors"
+  ],
+  "properties": {
+    "schema": {
+      "const": "cloakium.audit.runner/1"
+    },
+    "planId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "planHash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "suite": {
+      "$ref": "#/$defs/runnerSuite"
+    },
+    "environment": {
+      "$ref": "#/$defs/resolvedEnvironment"
+    },
+    "runs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/run"
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/auditError"
+      }
+    }
+  },
+  "$defs": {
+    "displayKind": {
+      "enum": [
+        "external-owned",
+        "managed"
+      ]
+    },
+    "display": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "width",
+        "height",
+        "depth",
+        "dpi",
+        "windowManager"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/displayKind"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "dpi": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "windowManager": {
+          "type": "string",
+          "minLength": 1
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "xauthorityPath": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "ownershipManifestPath": {
+          "type": "string",
+          "pattern": "^/"
+        }
+      }
+    },
+    "osFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "versionId",
+        "prettyName",
+        "buildId",
+        "kernel",
+        "arch"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "versionId": {
+          "type": "string"
+        },
+        "prettyName": {
+          "type": "string"
+        },
+        "buildId": {
+          "type": "string"
+        },
+        "kernel": {
+          "type": "string",
+          "minLength": 1
+        },
+        "arch": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "timezoneFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "zoneinfoPath",
+        "exists"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "zoneinfoPath": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "exists": {
+          "type": "boolean"
+        }
+      }
+    },
+    "fontconfigFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "declaredFile",
+        "realPath",
+        "exists",
+        "sha256"
+      ],
+      "properties": {
+        "declaredFile": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "realPath": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "exists": {
+          "type": "boolean"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "declaredPath": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "pathRealPath": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "pathExists": {
+          "type": "boolean"
+        }
+      }
+    },
+    "displayFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "socketPath": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "socketExists": {
+          "type": "boolean"
+        },
+        "xauthorityPath": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "xauthorityRealPath": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "xauthorityExists": {
+          "type": "boolean"
+        },
+        "xauthorityMode": {
+          "type": "string"
+        },
+        "ownershipManifestPath": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "ownershipManifestRealPath": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "ownershipManifestExists": {
+          "type": "boolean"
+        },
+        "ownershipManifestSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "localeFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "declared",
+        "source",
+        "processLang",
+        "processLcAll"
+      ],
+      "properties": {
+        "declared": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "processLang": {
+          "type": "string",
+          "minLength": 1
+        },
+        "processLcAll": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "environmentPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "inherited",
+        "appliedKeys",
+        "displayKeys",
+        "headlessDisplay"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "inherited": {
+          "const": false
+        },
+        "appliedKeys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "displayKeys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "headlessDisplay": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "resolvedFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "os",
+        "timezone",
+        "display",
+        "locale",
+        "environment"
+      ],
+      "properties": {
+        "os": {
+          "$ref": "#/$defs/osFacts"
+        },
+        "timezone": {
+          "$ref": "#/$defs/timezoneFacts"
+        },
+        "fontconfig": {
+          "$ref": "#/$defs/fontconfigFacts"
+        },
+        "display": {
+          "$ref": "#/$defs/displayFacts"
+        },
+        "locale": {
+          "$ref": "#/$defs/localeFacts"
+        },
+        "environment": {
+          "$ref": "#/$defs/environmentPolicy"
+        }
+      }
+    },
+    "resolvedEnvironment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "locale",
+        "timezoneId",
+        "display",
+        "resolved"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "locale": {
+          "type": "string",
+          "minLength": 1
+        },
+        "timezoneId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fontconfigFile": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "fontconfigPath": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "fontManifestSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "display": {
+          "$ref": "#/$defs/display"
+        },
+        "notes": {
+          "type": "string"
+        },
+        "resolved": {
+          "$ref": "#/$defs/resolvedFacts"
+        },
+        "diagnostics": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "environmentReceipt": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "seed": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "integer",
+          "minimum": 0
+        }
+      ]
+    },
+    "configuration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "targetId",
+        "mode",
+        "iteration",
+        "profileId",
+        "args",
+        "contextOptions",
+        "suites"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._-]{1,128}$"
+        },
+        "targetId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mode": {
+          "enum": [
+            "headless",
+            "headed"
+          ]
+        },
+        "iteration": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "profileId": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._-]{1,128}$"
+        },
+        "seed": {
+          "$ref": "#/$defs/seed"
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "contextOptions": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "suites": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "probeIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "suiteOptions": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "probeConfig": {},
+        "scenarioIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "client": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "packageSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "patchManifestSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "entrySha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "passed": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "status": {
+          "enum": [
+            "pass",
+            "fail",
+            "unknown",
+            "error",
+            "unsupported",
+            "skipped",
+            "not-applicable"
+          ]
+        }
+      }
+    },
+    "observationResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "observations",
+        "checks",
+        "limitations"
+      ],
+      "properties": {
+        "observations": {},
+        "checks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/check"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "family",
+        "status",
+        "result"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "family": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "observed",
+            "error",
+            "unsupported",
+            "skipped"
+          ]
+        },
+        "result": {
+          "$ref": "#/$defs/observationResult"
+        }
+      }
+    },
+    "cleanup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "notes"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "clean",
+            "incomplete",
+            "not-run"
+          ]
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "browserClosed": {
+          "type": "boolean"
+        },
+        "contextsClosed": {
+          "type": "boolean"
+        },
+        "processExited": {
+          "type": "boolean"
+        }
+      }
+    },
+    "probe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "sha256"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "runnerSuite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "probes"
+      ],
+      "properties": {
+        "manifestSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "probes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/probe"
+          }
+        }
+      }
+    },
+    "auditError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "phase",
+        "message"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "timeout",
+            "protocol",
+            "execution",
+            "cleanup",
+            "inventory",
+            "configuration",
+            "internal"
+          ]
+        },
+        "phase": {
+          "type": "string",
+          "minLength": 1
+        },
+        "configurationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "operation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "targetClosed": {
+          "type": "boolean"
+        },
+        "timeoutCategory": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      }
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "configuration",
+        "version",
+        "client",
+        "environment",
+        "observations",
+        "cleanup",
+        "limitations"
+      ],
+      "properties": {
+        "configuration": {
+          "$ref": "#/$defs/configuration"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "client": {
+          "$ref": "#/$defs/client"
+        },
+        "environment": {
+          "$ref": "#/$defs/resolvedEnvironment"
+        },
+        "observations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/observation"
+          }
+        },
+        "cleanup": {
+          "$ref": "#/$defs/cleanup"
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

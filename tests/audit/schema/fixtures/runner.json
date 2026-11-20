@@ -1,0 +1,631 @@
+{
+  "schema": "cloakium.audit.runner/1",
+  "planId": "plan-fixture",
+  "planHash": "09aef9ae2f0b8cbb163866e2ea275628c3ca1190ebdff60fdebaab3310142631",
+  "suite": {
+    "manifestSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "probes": [
+      {
+        "id": "navigator-core",
+        "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      }
+    ]
+  },
+  "environment": {
+    "id": "private-linux",
+    "locale": "en-US",
+    "timezoneId": "UTC",
+    "fontconfigFile": "/opt/cloakium/fonts/fonts.conf",
+    "fontconfigPath": "/opt/cloakium/fonts",
+    "fontManifestSha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "display": {
+      "kind": "managed",
+      "width": 1280,
+      "height": 800,
+      "depth": 24,
+      "dpi": 96,
+      "windowManager": "none",
+      "displayName": ":99",
+      "ownershipManifestPath": "/var/lib/cloakium-audit/display/plan-fixture.ownership.json"
+    },
+    "notes": "Private fixture environment; hashes are synthetic sample values.",
+    "resolved": {
+      "os": {
+        "id": "nixos",
+        "name": "NixOS",
+        "versionId": "25.11",
+        "prettyName": "NixOS 25.11 (Fixture)",
+        "buildId": "unknown",
+        "kernel": "6.12.0-fixture",
+        "arch": "x86_64"
+      },
+      "timezone": {
+        "id": "UTC",
+        "zoneinfoPath": "/usr/share/zoneinfo/UTC",
+        "exists": true
+      },
+      "fontconfig": {
+        "declaredFile": "/opt/cloakium/fonts/fonts.conf",
+        "realPath": "/opt/cloakium/fonts/fonts.conf",
+        "exists": true,
+        "sha256": "f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0",
+        "declaredPath": "/opt/cloakium/fonts",
+        "pathRealPath": "/opt/cloakium/fonts",
+        "pathExists": true
+      },
+      "display": {
+        "kind": "managed",
+        "displayName": ":99",
+        "socketPath": "/tmp/.X11-unix/X99",
+        "socketExists": true,
+        "ownershipManifestPath": "/var/lib/cloakium-audit/display/plan-fixture.ownership.json",
+        "ownershipManifestRealPath": "/var/lib/cloakium-audit/display/plan-fixture.ownership.json",
+        "ownershipManifestExists": true,
+        "ownershipManifestSha256": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "locale": {
+        "declared": "en-US",
+        "source": "plan",
+        "processLang": "C.UTF-8",
+        "processLcAll": "C.UTF-8"
+      },
+      "environment": {
+        "mode": "cleared+allowlist",
+        "inherited": false,
+        "appliedKeys": [
+          "FONTCONFIG_FILE",
+          "HOME",
+          "LANG",
+          "LC_ALL",
+          "PATH",
+          "TMPDIR",
+          "TZ",
+          "XDG_CACHE_HOME",
+          "XDG_CONFIG_HOME",
+          "XDG_RUNTIME_DIR"
+        ],
+        "displayKeys": [],
+        "headlessDisplay": "not-set"
+      }
+    }
+  },
+  "runs": [
+    {
+      "configuration": {
+        "id": "baseline-headless-1",
+        "targetId": "baseline",
+        "mode": "headless",
+        "iteration": 1,
+        "profileId": "default",
+        "seed": "42424",
+        "args": [],
+        "contextOptions": {},
+        "suites": [
+          "fingerprint"
+        ],
+        "probeIds": [
+          "navigator-core"
+        ]
+      },
+      "version": "fixture-browser-1.0",
+      "client": {
+        "version": "1.0.0-fixture",
+        "path": "/opt/cloakium/client/index.js",
+        "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "packageSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "patchManifestSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "entrySha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "environment": {
+        "id": "private-linux",
+        "locale": "en-US",
+        "timezoneId": "UTC",
+        "fontconfigFile": "/opt/cloakium/fonts/fonts.conf",
+        "fontconfigPath": "/opt/cloakium/fonts",
+        "fontManifestSha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "display": {
+          "kind": "managed",
+          "width": 1280,
+          "height": 800,
+          "depth": 24,
+          "dpi": 96,
+          "windowManager": "none",
+          "displayName": ":99",
+          "ownershipManifestPath": "/var/lib/cloakium-audit/display/plan-fixture.ownership.json"
+        },
+        "notes": "Private fixture environment; hashes are synthetic sample values.",
+        "resolved": {
+          "os": {
+            "id": "nixos",
+            "name": "NixOS",
+            "versionId": "25.11",
+            "prettyName": "NixOS 25.11 (Fixture)",
+            "buildId": "unknown",
+            "kernel": "6.12.0-fixture",
+            "arch": "x86_64"
+          },
+          "timezone": {
+            "id": "UTC",
+            "zoneinfoPath": "/usr/share/zoneinfo/UTC",
+            "exists": true
+          },
+          "fontconfig": {
+            "declaredFile": "/opt/cloakium/fonts/fonts.conf",
+            "realPath": "/opt/cloakium/fonts/fonts.conf",
+            "exists": true,
+            "sha256": "f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0",
+            "declaredPath": "/opt/cloakium/fonts",
+            "pathRealPath": "/opt/cloakium/fonts",
+            "pathExists": true
+          },
+          "display": {
+            "kind": "managed",
+            "displayName": ":99",
+            "socketPath": "/tmp/.X11-unix/X99",
+            "socketExists": true,
+            "ownershipManifestPath": "/var/lib/cloakium-audit/display/plan-fixture.ownership.json",
+            "ownershipManifestRealPath": "/var/lib/cloakium-audit/display/plan-fixture.ownership.json",
+            "ownershipManifestExists": true,
+            "ownershipManifestSha256": "1111111111111111111111111111111111111111111111111111111111111111"
+          },
+          "locale": {
+            "declared": "en-US",
+            "source": "plan",
+            "processLang": "C.UTF-8",
+            "processLcAll": "C.UTF-8"
+          },
+          "environment": {
+            "mode": "cleared+allowlist",
+            "inherited": false,
+            "appliedKeys": [
+              "FONTCONFIG_FILE",
+              "HOME",
+              "LANG",
+              "LC_ALL",
+              "PATH",
+              "TMPDIR",
+              "TZ",
+              "XDG_CACHE_HOME",
+              "XDG_CONFIG_HOME",
+              "XDG_RUNTIME_DIR"
+            ],
+            "displayKeys": [],
+            "headlessDisplay": "not-set"
+          }
+        }
+      },
+      "observations": [
+        {
+          "id": "navigator.webdriver",
+          "family": "navigator",
+          "status": "observed",
+          "result": {
+            "observations": {
+              "webdriver": false
+            },
+            "checks": [
+              {
+                "name": "webdriver-hidden",
+                "passed": true,
+                "status": "pass"
+              }
+            ],
+            "limitations": []
+          }
+        }
+      ],
+      "cleanup": {
+        "status": "clean",
+        "notes": [],
+        "browserClosed": true,
+        "contextsClosed": true,
+        "processExited": true
+      },
+      "durationMs": 1000,
+      "limitations": []
+    },
+    {
+      "configuration": {
+        "id": "baseline-headless-2",
+        "targetId": "baseline",
+        "mode": "headless",
+        "iteration": 2,
+        "profileId": "default",
+        "seed": "42424",
+        "args": [],
+        "contextOptions": {},
+        "suites": [
+          "fingerprint"
+        ],
+        "probeIds": [
+          "navigator-core"
+        ]
+      },
+      "version": "fixture-browser-1.0",
+      "client": {
+        "version": "1.0.0-fixture",
+        "path": "/opt/cloakium/client/index.js",
+        "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "packageSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "patchManifestSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "entrySha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "environment": {
+        "id": "private-linux",
+        "locale": "en-US",
+        "timezoneId": "UTC",
+        "fontconfigFile": "/opt/cloakium/fonts/fonts.conf",
+        "fontconfigPath": "/opt/cloakium/fonts",
+        "fontManifestSha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "display": {
+          "kind": "managed",
+          "width": 1280,
+          "height": 800,
+          "depth": 24,
+          "dpi": 96,
+          "windowManager": "none",
+          "displayName": ":99",
+          "ownershipManifestPath": "/var/lib/cloakium-audit/display/plan-fixture.ownership.json"
+        },
+        "notes": "Private fixture environment; hashes are synthetic sample values.",
+        "resolved": {
+          "os": {
+            "id": "nixos",
+            "name": "NixOS",
+            "versionId": "25.11",
+            "prettyName": "NixOS 25.11 (Fixture)",
+            "buildId": "unknown",
+            "kernel": "6.12.0-fixture",
+            "arch": "x86_64"
+          },
+          "timezone": {
+            "id": "UTC",
+            "zoneinfoPath": "/usr/share/zoneinfo/UTC",
+            "exists": true
+          },
+          "fontconfig": {
+            "declaredFile": "/opt/cloakium/fonts/fonts.conf",
+            "realPath": "/opt/cloakium/fonts/fonts.conf",
+            "exists": true,
+            "sha256": "f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0",
+            "declaredPath": "/opt/cloakium/fonts",
+            "pathRealPath": "/opt/cloakium/fonts",
+            "pathExists": true
+          },
+          "display": {
+            "kind": "managed",
+            "displayName": ":99",
+            "socketPath": "/tmp/.X11-unix/X99",
+            "socketExists": true,
+            "ownershipManifestPath": "/var/lib/cloakium-audit/display/plan-fixture.ownership.json",
+            "ownershipManifestRealPath": "/var/lib/cloakium-audit/display/plan-fixture.ownership.json",
+            "ownershipManifestExists": true,
+            "ownershipManifestSha256": "1111111111111111111111111111111111111111111111111111111111111111"
+          },
+          "locale": {
+            "declared": "en-US",
+            "source": "plan",
+            "processLang": "C.UTF-8",
+            "processLcAll": "C.UTF-8"
+          },
+          "environment": {
+            "mode": "cleared+allowlist",
+            "inherited": false,
+            "appliedKeys": [
+              "FONTCONFIG_FILE",
+              "HOME",
+              "LANG",
+              "LC_ALL",
+              "PATH",
+              "TMPDIR",
+              "TZ",
+              "XDG_CACHE_HOME",
+              "XDG_CONFIG_HOME",
+              "XDG_RUNTIME_DIR"
+            ],
+            "displayKeys": [],
+            "headlessDisplay": "not-set"
+          }
+        }
+      },
+      "observations": [
+        {
+          "id": "navigator.webdriver",
+          "family": "navigator",
+          "status": "observed",
+          "result": {
+            "observations": {
+              "webdriver": false
+            },
+            "checks": [
+              {
+                "name": "webdriver-hidden",
+                "passed": true,
+                "status": "pass"
+              }
+            ],
+            "limitations": []
+          }
+        }
+      ],
+      "cleanup": {
+        "status": "clean",
+        "notes": [],
+        "browserClosed": true,
+        "contextsClosed": true,
+        "processExited": true
+      },
+      "durationMs": 1000,
+      "limitations": []
+    },
+    {
+      "configuration": {
+        "id": "baseline-headed-1",
+        "targetId": "baseline",
+        "mode": "headed",
+        "iteration": 1,
+        "profileId": "default",
+        "seed": "42424",
+        "args": [],
+        "contextOptions": {},
+        "suites": [
+          "fingerprint"
+        ],
+        "probeIds": [
+          "navigator-core"
+        ]
+      },
+      "version": "fixture-browser-1.0",
+      "client": {
+        "version": "1.0.0-fixture",
+        "path": "/opt/cloakium/client/index.js",
+        "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "packageSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "patchManifestSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "entrySha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "environment": {
+        "id": "private-linux",
+        "locale": "en-US",
+        "timezoneId": "UTC",
+        "fontconfigFile": "/opt/cloakium/fonts/fonts.conf",
+        "fontconfigPath": "/opt/cloakium/fonts",
+        "fontManifestSha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "display": {
+          "kind": "managed",
+          "width": 1280,
+          "height": 800,
+          "depth": 24,
+          "dpi": 96,
+          "windowManager": "none",
+          "displayName": ":99",
+          "ownershipManifestPath": "/var/lib/cloakium-audit/display/plan-fixture.ownership.json"
+        },
+        "notes": "Private fixture environment; hashes are synthetic sample values.",
+        "resolved": {
+          "os": {
+            "id": "nixos",
+            "name": "NixOS",
+            "versionId": "25.11",
+            "prettyName": "NixOS 25.11 (Fixture)",
+            "buildId": "unknown",
+            "kernel": "6.12.0-fixture",
+            "arch": "x86_64"
+          },
+          "timezone": {
+            "id": "UTC",
+            "zoneinfoPath": "/usr/share/zoneinfo/UTC",
+            "exists": true
+          },
+          "fontconfig": {
+            "declaredFile": "/opt/cloakium/fonts/fonts.conf",
+            "realPath": "/opt/cloakium/fonts/fonts.conf",
+            "exists": true,
+            "sha256": "f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0",
+            "declaredPath": "/opt/cloakium/fonts",
+            "pathRealPath": "/opt/cloakium/fonts",
+            "pathExists": true
+          },
+          "display": {
+            "kind": "managed",
+            "displayName": ":99",
+            "socketPath": "/tmp/.X11-unix/X99",
+            "socketExists": true,
+            "ownershipManifestPath": "/var/lib/cloakium-audit/display/plan-fixture.ownership.json",
+            "ownershipManifestRealPath": "/var/lib/cloakium-audit/display/plan-fixture.ownership.json",
+            "ownershipManifestExists": true,
+            "ownershipManifestSha256": "1111111111111111111111111111111111111111111111111111111111111111"
+          },
+          "locale": {
+            "declared": "en-US",
+            "source": "plan",
+            "processLang": "C.UTF-8",
+            "processLcAll": "C.UTF-8"
+          },
+          "environment": {
+            "mode": "cleared+allowlist",
+            "inherited": false,
+            "appliedKeys": [
+              "FONTCONFIG_FILE",
+              "HOME",
+              "LANG",
+              "LC_ALL",
+              "PATH",
+              "TMPDIR",
+              "TZ",
+              "XDG_CACHE_HOME",
+              "XDG_CONFIG_HOME",
+              "XDG_RUNTIME_DIR"
+            ],
+            "displayKeys": [],
+            "headlessDisplay": "not-set"
+          }
+        }
+      },
+      "observations": [
+        {
+          "id": "navigator.webdriver",
+          "family": "navigator",
+          "status": "observed",
+          "result": {
+            "observations": {
+              "webdriver": false
+            },
+            "checks": [
+              {
+                "name": "webdriver-hidden",
+                "passed": true,
+                "status": "pass"
+              }
+            ],
+            "limitations": []
+          }
+        }
+      ],
+      "cleanup": {
+        "status": "clean",
+        "notes": [],
+        "browserClosed": true,
+        "contextsClosed": true,
+        "processExited": true
+      },
+      "durationMs": 1000,
+      "limitations": []
+    },
+    {
+      "configuration": {
+        "id": "baseline-headed-2",
+        "targetId": "baseline",
+        "mode": "headed",
+        "iteration": 2,
+        "profileId": "default",
+        "seed": "42424",
+        "args": [],
+        "contextOptions": {},
+        "suites": [
+          "fingerprint"
+        ],
+        "probeIds": [
+          "navigator-core"
+        ]
+      },
+      "version": "fixture-browser-1.0",
+      "client": {
+        "version": "1.0.0-fixture",
+        "path": "/opt/cloakium/client/index.js",
+        "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "packageSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "patchManifestSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "entrySha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "environment": {
+        "id": "private-linux",
+        "locale": "en-US",
+        "timezoneId": "UTC",
+        "fontconfigFile": "/opt/cloakium/fonts/fonts.conf",
+        "fontconfigPath": "/opt/cloakium/fonts",
+        "fontManifestSha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "display": {
+          "kind": "managed",
+          "width": 1280,
+          "height": 800,
+          "depth": 24,
+          "dpi": 96,
+          "windowManager": "none",
+          "displayName": ":99",
+          "ownershipManifestPath": "/var/lib/cloakium-audit/display/plan-fixture.ownership.json"
+        },
+        "notes": "Private fixture environment; hashes are synthetic sample values.",
+        "resolved": {
+          "os": {
+            "id": "nixos",
+            "name": "NixOS",
+            "versionId": "25.11",
+            "prettyName": "NixOS 25.11 (Fixture)",
+            "buildId": "unknown",
+            "kernel": "6.12.0-fixture",
+            "arch": "x86_64"
+          },
+          "timezone": {
+            "id": "UTC",
+            "zoneinfoPath": "/usr/share/zoneinfo/UTC",
+            "exists": true
+          },
+          "fontconfig": {
+            "declaredFile": "/opt/cloakium/fonts/fonts.conf",
+            "realPath": "/opt/cloakium/fonts/fonts.conf",
+            "exists": true,
+            "sha256": "f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0",
+            "declaredPath": "/opt/cloakium/fonts",
+            "pathRealPath": "/opt/cloakium/fonts",
+            "pathExists": true
+          },
+          "display": {
+            "kind": "managed",
+            "displayName": ":99",
+            "socketPath": "/tmp/.X11-unix/X99",
+            "socketExists": true,
+            "ownershipManifestPath": "/var/lib/cloakium-audit/display/plan-fixture.ownership.json",
+            "ownershipManifestRealPath": "/var/lib/cloakium-audit/display/plan-fixture.ownership.json",
+            "ownershipManifestExists": true,
+            "ownershipManifestSha256": "1111111111111111111111111111111111111111111111111111111111111111"
+          },
+          "locale": {
+            "declared": "en-US",
+            "source": "plan",
+            "processLang": "C.UTF-8",
+            "processLcAll": "C.UTF-8"
+          },
+          "environment": {
+            "mode": "cleared+allowlist",
+            "inherited": false,
+            "appliedKeys": [
+              "FONTCONFIG_FILE",
+              "HOME",
+              "LANG",
+              "LC_ALL",
+              "PATH",
+              "TMPDIR",
+              "TZ",
+              "XDG_CACHE_HOME",
+              "XDG_CONFIG_HOME",
+              "XDG_RUNTIME_DIR"
+            ],
+            "displayKeys": [],
+            "headlessDisplay": "not-set"
+          }
+        }
+      },
+      "observations": [
+        {
+          "id": "navigator.webdriver",
+          "family": "navigator",
+          "status": "observed",
+          "result": {
+            "observations": {
+              "webdriver": false
+            },
+            "checks": [
+              {
+                "name": "webdriver-hidden",
+                "passed": true,
+                "status": "pass"
+              }
+            ],
+            "limitations": []
+          }
+        }
+      ],
+      "cleanup": {
+        "status": "clean",
+        "notes": [],
+        "browserClosed": true,
+        "contextsClosed": true,
+        "processExited": true
+      },
+      "durationMs": 1000,
+      "limitations": []
+    }
+  ],
+  "errors": []
+}

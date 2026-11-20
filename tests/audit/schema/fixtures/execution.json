@@ -1,0 +1,10 @@
+{
+  "schema": "cloakium.audit.execution/1",
+  "runId": "run-fixture",
+  "planId": "plan-fixture",
+  "planHash": "09aef9ae2f0b8cbb163866e2ea275628c3ca1190ebdff60fdebaab3310142631",
+  "suiteManifestSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "nodeSha256": "bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+  "runnerSha256": "abababababababababababababababababababababababababababababababab",
+  "timeoutMs": 3600000
+}

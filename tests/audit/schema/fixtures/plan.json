@@ -1,0 +1,178 @@
+{
+  "schema": "cloakium.audit.plan/1",
+  "id": "plan-fixture",
+  "environment": {
+    "id": "private-linux",
+    "locale": "en-US",
+    "timezoneId": "UTC",
+    "fontconfigFile": "/opt/cloakium/fonts/fonts.conf",
+    "fontconfigPath": "/opt/cloakium/fonts",
+    "fontManifestSha256": "f000000000000000000000000000000000000000000000000000000000000000",
+    "display": {
+      "kind": "managed",
+      "width": 1280,
+      "height": 800,
+      "depth": 24,
+      "dpi": 96,
+      "windowManager": "none",
+      "ownershipManifestPath": "/var/lib/cloakium-audit/display/plan-fixture.ownership.json"
+    },
+    "notes": "Private fixture environment; hashes are synthetic sample values."
+  },
+  "targets": [
+    {
+      "id": "baseline",
+      "label": "Baseline",
+      "artifactPath": "/opt/cloakium/baseline/chrome",
+      "executablePath": "/opt/cloakium/baseline/cloakium-chromium",
+      "clientModule": "/opt/cloakium/client/index.js",
+      "layer": "engine",
+      "identity": "native",
+      "args": [],
+      "headlessArgs": [],
+      "headedArgs": []
+    },
+    {
+      "id": "candidate",
+      "label": "Candidate",
+      "artifactPath": "/opt/cloakium/candidate/chrome",
+      "executablePath": "/opt/cloakium/candidate/cloakium-chromium",
+      "clientModule": "/opt/cloakium/client/index.js",
+      "layer": "engine",
+      "identity": "native",
+      "args": [],
+      "headlessArgs": [],
+      "headedArgs": []
+    }
+  ],
+  "configurations": [
+    {
+      "id": "baseline-headless-1",
+      "targetId": "baseline",
+      "mode": "headless",
+      "iteration": 1,
+      "profileId": "default",
+      "seed": "42424",
+      "args": [],
+      "contextOptions": {},
+      "suites": [
+        "fingerprint"
+      ],
+      "probeIds": [
+        "navigator-core"
+      ]
+    },
+    {
+      "id": "baseline-headless-2",
+      "targetId": "baseline",
+      "mode": "headless",
+      "iteration": 2,
+      "profileId": "default",
+      "seed": "42424",
+      "args": [],
+      "contextOptions": {},
+      "suites": [
+        "fingerprint"
+      ],
+      "probeIds": [
+        "navigator-core"
+      ]
+    },
+    {
+      "id": "baseline-headed-1",
+      "targetId": "baseline",
+      "mode": "headed",
+      "iteration": 1,
+      "profileId": "default",
+      "seed": "42424",
+      "args": [],
+      "contextOptions": {},
+      "suites": [
+        "fingerprint"
+      ],
+      "probeIds": [
+        "navigator-core"
+      ]
+    },
+    {
+      "id": "baseline-headed-2",
+      "targetId": "baseline",
+      "mode": "headed",
+      "iteration": 2,
+      "profileId": "default",
+      "seed": "42424",
+      "args": [],
+      "contextOptions": {},
+      "suites": [
+        "fingerprint"
+      ],
+      "probeIds": [
+        "navigator-core"
+      ]
+    },
+    {
+      "id": "candidate-headless-1",
+      "targetId": "candidate",
+      "mode": "headless",
+      "iteration": 1,
+      "profileId": "default",
+      "seed": "42424",
+      "args": [],
+      "contextOptions": {},
+      "suites": [
+        "fingerprint"
+      ],
+      "probeIds": [
+        "navigator-core"
+      ]
+    },
+    {
+      "id": "candidate-headless-2",
+      "targetId": "candidate",
+      "mode": "headless",
+      "iteration": 2,
+      "profileId": "default",
+      "seed": "42424",
+      "args": [],
+      "contextOptions": {},
+      "suites": [
+        "fingerprint"
+      ],
+      "probeIds": [
+        "navigator-core"
+      ]
+    },
+    {
+      "id": "candidate-headed-1",
+      "targetId": "candidate",
+      "mode": "headed",
+      "iteration": 1,
+      "profileId": "default",
+      "seed": "42424",
+      "args": [],
+      "contextOptions": {},
+      "suites": [
+        "fingerprint"
+      ],
+      "probeIds": [
+        "navigator-core"
+      ]
+    },
+    {
+      "id": "candidate-headed-2",
+      "targetId": "candidate",
+      "mode": "headed",
+      "iteration": 2,
+      "profileId": "default",
+      "seed": "42424",
+      "args": [],
+      "contextOptions": {},
+      "suites": [
+        "fingerprint"
+      ],
+      "probeIds": [
+        "navigator-core"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "schema": "cloakium.audit.policy/1",
+  "allowlist": [
+    {
+      "id": "persona-locale",
+      "justification": "The persona profile intentionally sets a French locale; this is a recorded policy difference, not a browser defect.",
+      "featureIds": ["navigator.language"],
+      "checks": ["language"],
+      "modes": ["headless", "headed"]
+    }
+  ],
+  "stableFields": ["webdriver"]
+}

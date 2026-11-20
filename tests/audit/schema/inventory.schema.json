@@ -1,0 +1,286 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cloakium.audit.inventory/1",
+  "title": "Cloakium audit inventory bundle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "targets"
+  ],
+  "properties": {
+    "schema": {
+      "const": "cloakium.audit.inventory/1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "minLength": 1
+    },
+    "targets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/inventoryRecord"
+      }
+    }
+  },
+  "$defs": {
+    "sandboxFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "filesystemOnly",
+        "setuid",
+        "setgid",
+        "worldWritable",
+        "runtimeExercised"
+      ],
+      "properties": {
+        "filesystemOnly": {
+          "const": true
+        },
+        "setuid": {
+          "type": "boolean"
+        },
+        "setgid": {
+          "type": "boolean"
+        },
+        "worldWritable": {
+          "type": "boolean"
+        },
+        "runtimeExercised": {
+          "const": false
+        }
+      }
+    },
+    "elfMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "class",
+        "endianness",
+        "osAbi",
+        "abiVersion",
+        "elfType",
+        "machine",
+        "machineCode",
+        "entry",
+        "programHeaders",
+        "sectionHeaders"
+      ],
+      "properties": {
+        "class": {
+          "enum": [
+            "ELF32",
+            "ELF64"
+          ]
+        },
+        "endianness": {
+          "enum": [
+            "little",
+            "big"
+          ]
+        },
+        "osAbi": {
+          "type": "string",
+          "minLength": 1
+        },
+        "abiVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "elfType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "machine": {
+          "type": "string",
+          "minLength": 1
+        },
+        "machineCode": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "entry": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "programHeaders": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sectionHeaders": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "interpreter": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "fileIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "originalPath",
+        "realPath",
+        "symlink",
+        "sha256Before",
+        "sha256After",
+        "unchanged",
+        "size",
+        "mode",
+        "modeBits",
+        "uid",
+        "gid",
+        "executable",
+        "permissions"
+      ],
+      "properties": {
+        "originalPath": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "realPath": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "symlink": {
+          "type": "boolean"
+        },
+        "sha256Before": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "sha256After": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "unchanged": {
+          "const": true
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mode": {
+          "type": "string",
+          "pattern": "^[0-7]{4}$"
+        },
+        "modeBits": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4095
+        },
+        "uid": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "gid": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "executable": {
+          "const": true
+        },
+        "permissions": {
+          "$ref": "#/$defs/sandboxFacts"
+        },
+        "elf": {
+          "$ref": "#/$defs/elfMetadata"
+        },
+        "kind": {
+          "enum": [
+            "elf",
+            "script"
+          ]
+        }
+      }
+    },
+    "inventoryRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "artifactPath",
+        "executablePath",
+        "clientModule",
+        "layer",
+        "identity",
+        "args",
+        "headlessArgs",
+        "headedArgs",
+        "artifact",
+        "executable",
+        "sameRealPath"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._-]{1,128}$"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifactPath": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "executablePath": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "clientModule": {
+          "type": "string"
+        },
+        "layer": {
+          "enum": [
+            "engine",
+            "launcher",
+            "product"
+          ]
+        },
+        "identity": {
+          "enum": [
+            "native",
+            "persona"
+          ]
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "headlessArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "headedArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "artifact": {
+          "$ref": "#/$defs/fileIdentity"
+        },
+        "executable": {
+          "$ref": "#/$defs/fileIdentity"
+        },
+        "sameRealPath": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

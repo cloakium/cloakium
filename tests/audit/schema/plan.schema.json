@@ -1,0 +1,328 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cloakium.audit.plan/1",
+  "title": "Cloakium audit comparison plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "environment",
+    "targets",
+    "configurations"
+  ],
+  "properties": {
+    "schema": {
+      "const": "cloakium.audit.plan/1"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._-]{1,128}$"
+    },
+    "environment": {
+      "$ref": "#/$defs/environment"
+    },
+    "targets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/target"
+      }
+    },
+    "configurations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/configuration"
+      }
+    }
+  },
+  "$defs": {
+    "seed": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "integer",
+          "minimum": 0
+        }
+      ]
+    },
+    "displayKind": {
+      "enum": [
+        "external-owned",
+        "managed"
+      ]
+    },
+    "display": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "width",
+        "height",
+        "depth",
+        "dpi",
+        "windowManager"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/displayKind"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "dpi": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "windowManager": {
+          "type": "string",
+          "minLength": 1
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "xauthorityPath": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "ownershipManifestPath": {
+          "type": "string",
+          "pattern": "^/"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "external-owned"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "ownershipManifestPath"
+            ],
+            "properties": {
+              "ownershipManifestPath": {
+                "pattern": "/display\\.json$"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "locale",
+        "timezoneId",
+        "display"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "locale": {
+          "type": "string",
+          "minLength": 1
+        },
+        "timezoneId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fontconfigFile": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "fontconfigPath": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "fontManifestSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "display": {
+          "$ref": "#/$defs/display"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "layer": {
+      "enum": [
+        "engine",
+        "launcher",
+        "product"
+      ]
+    },
+    "identity": {
+      "enum": [
+        "native",
+        "persona"
+      ]
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "artifactPath",
+        "executablePath",
+        "clientModule",
+        "layer",
+        "identity",
+        "args",
+        "headlessArgs",
+        "headedArgs"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._-]{1,128}$"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifactPath": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "executablePath": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "clientModule": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "layer": {
+          "$ref": "#/$defs/layer"
+        },
+        "identity": {
+          "$ref": "#/$defs/identity"
+        },
+        "args": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "headlessArgs": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "headedArgs": {
+          "$ref": "#/$defs/stringArray"
+        }
+      }
+    },
+    "stringArray": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "mode": {
+      "enum": [
+        "headless",
+        "headed"
+      ]
+    },
+    "configuration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "targetId",
+        "mode",
+        "iteration",
+        "profileId",
+        "args",
+        "contextOptions",
+        "suites"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._-]{1,128}$"
+        },
+        "targetId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mode": {
+          "$ref": "#/$defs/mode"
+        },
+        "iteration": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "profileId": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._-]{1,128}$"
+        },
+        "seed": {
+          "$ref": "#/$defs/seed"
+        },
+        "args": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "contextOptions": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "suites": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "probeIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "suiteOptions": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "probeConfig": {},
+        "scenarioIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

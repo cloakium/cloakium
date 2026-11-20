@@ -64,6 +64,8 @@
     "test:parity": "node tests/parity/run.mjs",
     "test:parity:fullscreen": "node tests/parity/fullscreen.mjs",
     "test:parity:unit": "node --test tests/parity/*.test.mjs",
+    "test:audit": "node tests/audit/run.mjs",
+    "test:audit:unit": "node tests/audit/check.mjs",
     "verify": "node tests/verification/verify.mjs"
   }
 }

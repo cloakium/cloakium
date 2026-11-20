@@ -49,6 +49,11 @@
           };
 
           maintain = pkgs.callPackage ./nix/maintain.nix { };
+          audit-display = pkgs.callPackage ./nix/audit-display.nix { };
+          audit-h3-lab = pkgs.callPackage ./nix/audit-h3-lab.nix { };
+          audit = pkgs.callPackage ./nix/browser-audit.nix {
+            inherit audit-display audit-h3-lab;
+          };
           playwright = pkgs.callPackage ./nix/playwright.nix { nodejs = pkgs.nodejs_26; };
           playwright-patcher = playwright.patcher;
           browser = import ./nix/browser.nix {
@@ -74,6 +79,8 @@
             xvfb-run
             openbox
             xprop
+            fontconfig
+            openssl
           ];
           devShellInputs = {
             nativeBuildInputs = [ pkgs.pkg-config ];
@@ -88,6 +95,9 @@
               chromium-unwrapped
               chromium-patch-check
               maintain
+              audit
+              audit-display
+              audit-h3-lab
               playwright
               playwright-patcher
               browser
@@ -112,10 +122,26 @@
               program = "${chromium}/bin/cloakium-chromium";
               meta = chromium.meta;
             };
+            audit = {
+              type = "app";
+              program = "${audit}/bin/cloakium-audit";
+              meta = audit.meta;
+            };
+            audit-display = {
+              type = "app";
+              program = "${audit-display}/bin/cloakium-audit-display";
+              meta = audit-display.meta;
+            };
           };
 
           checks = {
-            inherit chromium-patch-check launcher;
+            inherit
+              chromium-patch-check
+              launcher
+              audit
+              audit-display
+              audit-h3-lab
+              ;
           };
 
           # No Chromium build is pulled in by the default shell. Opt into the

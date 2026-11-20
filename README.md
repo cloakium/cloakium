@@ -104,6 +104,23 @@ The [headed/headless parity suite](docs/headless-parity.md) compares real input,
 window, rendering and storage behaviour. Its headed reference uses a private
 test display; production headless processes run without a display connection.
 
+## Reusable browser audits
+
+The [audit workflow](docs/browser-audits/workflow.md) provides private inventories,
+versioned plans/reports, local probe suites and an evidence-backed gap catalogue.
+It separates engine, launcher and driver behavior and requires headless
+acceptance rather than treating every unequal fingerprint value as a gap.
+
+Three [project-local skills](docs/audit-skills.md) cover an explicitly selected
+private browser, open-source browser discovery, and Chromium/Playwright updates.
+Discovery does not download or execute candidates. Private artifacts, credentials
+and raw reverse-engineering evidence stay outside the repository.
+
+```sh
+nix run .#audit -- --help
+npm run test:audit:unit
+```
+
 ## Automatic updates
 
 Every six hours Actions checks stable Playwright and the Chromium recipe in

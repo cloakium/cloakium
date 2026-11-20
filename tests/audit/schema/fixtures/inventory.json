@@ -1,0 +1,89 @@
+{
+  "schema": "cloakium.audit.inventory/1",
+  "generatedAt": "2026-01-01T00:00:00.000Z",
+  "targets": [
+    {
+      "id": "baseline",
+      "label": "Baseline",
+      "artifactPath": "/opt/cloakium/baseline/chrome",
+      "executablePath": "/opt/cloakium/baseline/cloakium-chromium",
+      "clientModule": "/opt/cloakium/client/index.js",
+      "layer": "engine",
+      "identity": "native",
+      "args": [],
+      "headlessArgs": [],
+      "headedArgs": [],
+      "artifact": {
+        "originalPath": "/opt/cloakium/baseline/chrome",
+        "realPath": "/opt/cloakium/baseline/chrome",
+        "symlink": false,
+        "sha256Before": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "sha256After": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "unchanged": true,
+        "size": 123456,
+        "mode": "0755",
+        "modeBits": 493,
+        "uid": 1000,
+        "gid": 1000,
+        "executable": true,
+        "permissions": {
+          "filesystemOnly": true,
+          "setuid": false,
+          "setgid": false,
+          "worldWritable": false,
+          "runtimeExercised": false
+        },
+        "elf": {
+          "class": "ELF64",
+          "endianness": "little",
+          "osAbi": "linux",
+          "abiVersion": 0,
+          "elfType": "pie",
+          "machine": "x86_64",
+          "machineCode": 62,
+          "entry": 123456,
+          "programHeaders": 13,
+          "sectionHeaders": 30,
+          "interpreter": "/lib64/ld-linux-x86-64.so.2"
+        },
+        "kind": "elf"
+      },
+      "executable": {
+        "originalPath": "/opt/cloakium/baseline/cloakium-chromium",
+        "realPath": "/opt/cloakium/baseline/cloakium-chromium",
+        "symlink": false,
+        "sha256Before": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "sha256After": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "unchanged": true,
+        "size": 54321,
+        "mode": "0755",
+        "modeBits": 493,
+        "uid": 1000,
+        "gid": 1000,
+        "executable": true,
+        "permissions": {
+          "filesystemOnly": true,
+          "setuid": false,
+          "setgid": false,
+          "worldWritable": false,
+          "runtimeExercised": false
+        },
+        "elf": {
+          "class": "ELF64",
+          "endianness": "little",
+          "osAbi": "linux",
+          "abiVersion": 0,
+          "elfType": "pie",
+          "machine": "x86_64",
+          "machineCode": 62,
+          "entry": 54321,
+          "programHeaders": 13,
+          "sectionHeaders": 30,
+          "interpreter": "/lib64/ld-linux-x86-64.so.2"
+        },
+        "kind": "elf"
+      },
+      "sameRealPath": false
+    }
+  ]
+}

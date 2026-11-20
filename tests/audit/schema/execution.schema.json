@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cloakium.audit.execution/1",
+  "title": "Cloakium audit execution context",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "runId", "planId", "planHash", "suiteManifestSha256",
+    "nodeSha256", "runnerSha256", "timeoutMs"
+  ],
+  "properties": {
+    "schema": { "const": "cloakium.audit.execution/1" },
+    "runId": { "type": "string", "minLength": 1 },
+    "planId": { "type": "string", "minLength": 1 },
+    "planHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "suiteManifestSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "nodeSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "runnerSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "timeoutMs": { "type": "integer", "minimum": 0 }
+  }
+}

@@ -27,7 +27,7 @@ jobs:
       - name: Evaluate and replay patches
         run: |
           nix flake check . --all-systems --no-build
-          nix build .#maintain .#playwright .#browser .#launcher .#chromium-patch-check -L
+          nix build .#maintain .#playwright .#browser .#launcher .#chromium-patch-check .#audit .#audit-display .#audit-h3-lab -L
       - name: Rust checks
         run: |
           nix develop . -c cargo fmt --manifest-path tools/maintain/Cargo.toml -- --check
@@ -39,11 +39,23 @@ jobs:
           nix develop . -c cargo fmt --manifest-path tools/launcher/Cargo.toml -- --check
           nix develop . -c cargo test --locked --manifest-path tools/launcher/Cargo.toml
           nix develop . -c cargo clippy --locked --manifest-path tools/launcher/Cargo.toml --all-targets -- -D warnings
+          for crate in browser-audit audit-display audit-h3-lab; do
+            nix develop . -c cargo fmt --manifest-path "tools/$crate/Cargo.toml" -- --check
+            nix develop . -c cargo test --locked --manifest-path "tools/$crate/Cargo.toml"
+            nix develop . -c cargo clippy --locked --manifest-path "tools/$crate/Cargo.toml" --all-targets -- -D warnings
+          done
       - name: Public API tests
         run: |
           nix develop . -c npm ci --ignore-scripts --no-audit --no-fund
           nix develop . -c npm run typecheck
           nix develop . -c npm test
+          CLOAKIUM_H3_BIN="$(nix eval --raw .#audit-h3-lab.outPath)/bin/cloakium-lab-h3"
+          export CLOAKIUM_H3_BIN
+          nix develop . -c npm run test:audit:unit
+          nix develop . -c rustc --edition 2021 -O .opencode/skills/tests/validate.rs -o "$RUNNER_TEMP/cloakium-skill-validate"
+          CLOAKIUM_AUDIT_BIN="$(nix eval --raw .#audit.outPath)/bin/cloakium-audit"
+          export CLOAKIUM_AUDIT_BIN
+          nix develop . -c "$RUNNER_TEMP/cloakium-skill-validate" .opencode/skills --help-check --audit-bin "$CLOAKIUM_AUDIT_BIN"
       - name: Retain diagnostics
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

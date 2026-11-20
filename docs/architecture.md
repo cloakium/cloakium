@@ -14,6 +14,9 @@ a proprietary browser or a payment/license-check workaround.
 * **Browser library** is original TypeScript. It resolves an explicitly installed
   browser, configures coherent native contexts and exposes ordinary Playwright
   objects. Optional input pacing uses public Playwright APIs.
+* **Launch profile** uses upstream Chromium settings for headless virtual
+  displays and desktop input capabilities. Keep these defaults separate from
+  engine patches and preserve explicit caller configuration.
 * **Maintenance** is Rust, built and installed through Nix. It prepares upstream
   candidates and produces signed, checksummed release assets. It never downloads
   a browser implicitly when an application launches.
@@ -21,6 +24,12 @@ a proprietary browser or a payment/license-check workaround.
 There is one release owner and one flake rather than loosely synchronized
 repositories. Browser, driver, patch digests and the complete Nix input lock are
 recorded together. There is no Puppeteer integration.
+
+Nix owns source pins, strict patch replay, package composition and reproducible
+builds; it is not a substitute for behavioural tests. Prefer an upstream
+configuration mechanism over a new C++ patch when both meet the same tested
+contract. Native patches remain for behaviour that cannot be configured safely.
+See [headed/headless parity](headless-parity.md).
 
 `playwright.chromiumVersion` records Playwright's reference Chrome-for-Testing
 build, while `chromium.version` records the actual source-built stable browser.

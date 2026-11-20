@@ -27,7 +27,7 @@ jobs:
       - name: Evaluate and replay patches
         run: |
           nix flake check . --all-systems --no-build
-          nix build .#maintain .#playwright .#browser .#chromium-patch-check -L
+          nix build .#maintain .#playwright .#browser .#launcher .#chromium-patch-check -L
       - name: Rust checks
         run: |
           nix develop . -c cargo fmt --manifest-path tools/maintain/Cargo.toml -- --check
@@ -36,6 +36,9 @@ jobs:
           nix develop . -c cargo fmt --manifest-path tools/playwright-patcher/Cargo.toml -- --check
           nix develop . -c cargo test --locked --manifest-path tools/playwright-patcher/Cargo.toml
           nix develop . -c cargo clippy --locked --manifest-path tools/playwright-patcher/Cargo.toml --all-targets -- -D warnings
+          nix develop . -c cargo fmt --manifest-path tools/launcher/Cargo.toml -- --check
+          nix develop . -c cargo test --locked --manifest-path tools/launcher/Cargo.toml
+          nix develop . -c cargo clippy --locked --manifest-path tools/launcher/Cargo.toml --all-targets -- -D warnings
       - name: Public API tests
         run: |
           nix develop . -c npm ci --ignore-scripts --no-audit --no-fund

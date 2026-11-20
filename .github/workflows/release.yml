@@ -89,7 +89,7 @@ jobs:
           NATIVE_RUNNER: ${{ vars.CLOAKIUM_BUILD_RUNNER || '["self-hosted","linux","x64","cloakium-chromium"]' }}
         run: |
           case "$SYSTEM" in x86_64-linux|aarch64-linux) ;; *) exit 1 ;; esac
-          native=$(nix eval --raw ".#packages.$SYSTEM.chromium.outPath")
+          native=$(nix eval --raw ".#packages.$SYSTEM.chromium-native.outPath")
           key=$(cat cache-public-key.txt)
           cache=https://github.com/cloakium/cloakium/releases/latest/download
           if timeout 600 nix store verify --store "$cache" --recursive --no-contents --sigs-needed 1 \
@@ -108,7 +108,7 @@ jobs:
     needs: prepare
     if: github.ref == 'refs/heads/main' && inputs.bootstrap_tag == ''
     runs-on: ${{ fromJSON(needs.prepare.outputs.runner) }}
-    timeout-minutes: 720
+    timeout-minutes: 900
     outputs:
       revision: ${{ steps.source.outputs.revision }}
       main_revision: ${{ steps.source.outputs.main_revision }}
@@ -174,7 +174,7 @@ jobs:
       - name: Import verified native cache without a compiler fallback
         if: needs.prepare.outputs.cached == 'true'
         run: |
-          native=$(nix eval --raw .#chromium.outPath)
+          native=$(nix eval --raw .#chromium-native.outPath)
           [ "$native" = '${{ needs.prepare.outputs.native }}' ]
           key=$(cat cache-public-key.txt)
           nix copy --from https://github.com/cloakium/cloakium/releases/latest/download \
@@ -195,9 +195,10 @@ jobs:
           command -v apparmor_parser
           unwrapped=$(nix eval --raw .#chromium-unwrapped.outPath)
           browser=$(nix eval --raw .#chromium.outPath)
+          native=$(nix eval --raw .#chromium-native.outPath)
           elf="$unwrapped/libexec/chromium/chromium"
           test -x "$elf"
-          grep -qF "$elf" "$browser/bin/cloakium-chromium"
+          grep -qF "$elf" "$native/bin/chromium"
           name="cloakium-chromium-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           profile="/etc/apparmor.d/$name"
           printf 'abi <abi/4.0>,\ninclude <tunables/global>\nprofile %s "%s" flags=(default_allow) {\n  userns,\n}\n' \
@@ -261,6 +262,7 @@ jobs:
           path: |
             artifacts/verification.json
             artifacts/*.log
+            artifacts/parity/
           if-no-files-found: ignore
 
   publish:

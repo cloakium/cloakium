@@ -9,3 +9,101 @@
    }
  });
  
+@@ -45159,46 +45159,47 @@
+       async defaultArgs(options, isPersistent, userDataDir) {
+         const chromeArguments = this._innerDefaultArgs(options);
+         chromeArguments.push(`--user-data-dir=${userDataDir}`);
+         chromeArguments.push("--remote-debugging-pipe");
+         if (isPersistent)
+           chromeArguments.push("about:blank");
+         else
+           chromeArguments.push("--no-startup-window");
+         return chromeArguments;
+       }
+       _innerDefaultArgs(options) {
+         const { args = [] } = options;
+         const userDataDirArg = args.find((arg2) => arg2.startsWith("--user-data-dir"));
+         if (userDataDirArg)
+           throw this._createUserDataDirArgMisuseError("--user-data-dir");
+         if (args.find((arg2) => arg2.startsWith("--remote-debugging-pipe")))
+           throw new Error("Playwright manages remote debugging connection itself.");
+         if (args.find((arg2) => !arg2.startsWith("-")))
+           throw new Error("Arguments can not specify page to be opened");
+         const chromeArguments = [...chromiumSwitches()];
+         if (options.headless) {
+           chromeArguments.push("--headless");
++          const cloakiumFingerprint = args.some((arg2) => arg2 === "--fingerprint" || arg2.startsWith("--fingerprint="));
+           chromeArguments.push(
+-            "--hide-scrollbars",
++            ...(cloakiumFingerprint ? [] : ["--hide-scrollbars"]),
+             "--mute-audio",
+             "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
+           );
+         }
+         if (options.chromiumSandbox !== true)
+           chromeArguments.push("--no-sandbox");
+         const proxy = options.proxyOverride || options.proxy;
+         if (proxy) {
+           const proxyURL = new URL(proxy.server);
+           const isSocks = proxyURL.protocol === "socks5:";
+           if (isSocks && !options.socksProxyPort) {
+             chromeArguments.push(`--host-resolver-rules="MAP * ~NOTFOUND , EXCLUDE ${proxyURL.hostname}"`);
+           }
+           chromeArguments.push(`--proxy-server=${proxy.server}`);
+           const proxyBypassRules = [];
+           if (proxy.bypass)
+             proxyBypassRules.push(...proxy.bypass.split(",").map((t) => t.trim()).map((t) => t.startsWith(".") ? "*" + t : t));
+           if (options.socksProxyPort || shouldProxyLoopback(proxy.bypass))
+             proxyBypassRules.push("<-loopback>");
+           if (proxyBypassRules.length > 0)
+             chromeArguments.push(`--proxy-bypass-list=${proxyBypassRules.join(";")}`);
+         }
+@@ -45364,46 +45365,47 @@
+         chromeArguments.push("--remote-debugging-port=0");
+         if (isPersistent)
+           chromeArguments.push("about:blank");
+         else
+           chromeArguments.push("--no-startup-window");
+         return chromeArguments;
+       }
+       async waitForReadyState(options, browserLogsCollector) {
+         return waitForReadyState({ ...options, args: ["--remote-debugging-port=0"] }, browserLogsCollector);
+       }
+       _innerDefaultArgs(options) {
+         const { args = [] } = options;
+         const userDataDirArg = args.find((arg2) => arg2.startsWith("--user-data-dir"));
+         if (userDataDirArg)
+           throw this._createUserDataDirArgMisuseError("--user-data-dir");
+         if (args.find((arg2) => arg2.startsWith("--remote-debugging-pipe")))
+           throw new Error("Playwright manages remote debugging connection itself.");
+         if (args.find((arg2) => !arg2.startsWith("-")))
+           throw new Error("Arguments can not specify page to be opened");
+         const chromeArguments = [...chromiumSwitches()];
+         if (options.headless) {
+           chromeArguments.push("--headless");
++          const cloakiumFingerprint = args.some((arg2) => arg2 === "--fingerprint" || arg2.startsWith("--fingerprint="));
+           chromeArguments.push(
+-            "--hide-scrollbars",
++            ...(cloakiumFingerprint ? [] : ["--hide-scrollbars"]),
+             "--mute-audio",
+             "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
+           );
+         }
+         if (options.chromiumSandbox !== true)
+           chromeArguments.push("--no-sandbox");
+         const proxy = options.proxyOverride || options.proxy;
+         if (proxy) {
+           const proxyURL = new URL(proxy.server);
+           const isSocks = proxyURL.protocol === "socks5:";
+           if (isSocks && !options.socksProxyPort) {
+             chromeArguments.push(`--host-resolver-rules="MAP * ~NOTFOUND , EXCLUDE ${proxyURL.hostname}"`);
+           }
+           chromeArguments.push(`--proxy-server=${proxy.server}`);
+           const proxyBypassRules = [];
+           if (proxy.bypass)
+             proxyBypassRules.push(...proxy.bypass.split(",").map((t) => t.trim()).map((t) => t.startsWith(".") ? "*" + t : t));
+           if (options.socksProxyPort || shouldProxyLoopback(proxy.bypass))
+             proxyBypassRules.push("<-loopback>");
+           if (proxyBypassRules.length > 0)
+             chromeArguments.push(`--proxy-bypass-list=${proxyBypassRules.join(";")}`);
+         }

@@ -1,16 +1,9 @@
-//! The constructed flake reference must let Nix choose the git fetcher.
-//!
-//! A forced `path:` reference copies the whole working tree, including
-//! `target/`, `node_modules/` and staged release artifacts, into the Nix store
-//! on every update and signing run. A bare absolute path lets Nix detect a
-//! colocated Git/JJ checkout and fall back to the path fetcher only for plain
-//! scratch directories.
+//! Nix must exclude ignored outputs in colocated Jujutsu workspaces.
 
 mod support;
 
 use std::fs;
 use std::path::Path;
-use std::process::Command as Process;
 use std::time::Duration;
 
 use cloakium_maintain::command::{Command, ProcessRunner, Runner};
@@ -19,19 +12,15 @@ use serde_json::Value;
 
 fn nix_available() -> bool {
     std::env::var_os("CLOAKIUM_SKIP_NIX_TESTS").is_none()
-        && Process::new("nix")
-            .arg("--version")
-            .output()
-            .map(|output| output.status.success())
-            .unwrap_or(false)
+        && ProcessRunner
+            .run(&Command::new("nix", ["--version"]).timeout(Duration::from_secs(10)))
+            .is_ok()
 }
 
-fn git_available() -> bool {
-    Process::new("git")
-        .arg("--version")
-        .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false)
+fn jj_available() -> bool {
+    ProcessRunner
+        .run(&Command::new("jj", ["--version"]).timeout(Duration::from_secs(10)))
+        .is_ok()
 }
 
 #[test]
@@ -72,9 +61,9 @@ fn a_plain_directory_still_evaluates_as_a_flake() {
 }
 
 #[test]
-fn a_git_checkout_resolves_through_the_git_fetcher() {
-    if !nix_available() || !git_available() {
-        eprintln!("skipping the git fetcher probe: nix or git is unavailable");
+fn a_jj_checkout_resolves_through_the_git_fetcher() {
+    if !nix_available() || !jj_available() {
+        eprintln!("skipping the colocated fetcher probe: nix or jj is unavailable");
         return;
     }
     let (_directory, root) = support::temp_root();
@@ -88,26 +77,26 @@ fn a_git_checkout_resolves_through_the_git_fetcher() {
     fs::write(root.join("target/bloat.bin"), vec![0u8; 64 * 1024]).expect("bloat");
 
     for arguments in [
-        vec!["init"],
-        vec!["add", "-A"],
-        vec![
-            "-c",
-            "commit.gpgsign=false",
-            "-c",
-            "user.email=test@example.test",
-            "-c",
-            "user.name=Cloakium Test",
-            "commit",
-            "-m",
-            "probe",
-        ],
+        vec!["git", "init", "--colocate"],
+        vec!["describe", "-m", "probe"],
+        vec!["new"],
     ] {
-        let status = Process::new("git")
-            .args(&arguments)
-            .current_dir(&root)
-            .status()
-            .expect("git runs");
-        assert!(status.success(), "git {arguments:?} failed");
+        let mut args = vec![
+            "--config",
+            "signing.behavior=\"drop\"",
+            "--config",
+            "user.email=\"test@example.test\"",
+            "--config",
+            "user.name=\"Cloakium Test\"",
+        ];
+        args.extend(arguments);
+        ProcessRunner
+            .run(
+                &Command::new("jj", args)
+                    .cwd(&root)
+                    .timeout(Duration::from_secs(30)),
+            )
+            .expect("the fixture's Jujutsu operation must succeed");
     }
 
     let reference = util::flake_reference(&root);

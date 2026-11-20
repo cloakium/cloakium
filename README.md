@@ -100,6 +100,10 @@ See the exact [native patches](docs/native-patches.md),
 [research boundaries](docs/research.md). Detector scores, physical-input identity,
 CAPTCHA handling and a perfect copy of any proprietary product are not guaranteed.
 
+The [headed/headless parity suite](docs/headless-parity.md) compares real input,
+window, rendering and storage behaviour. Its headed reference uses a private
+test display; production headless processes run without a display connection.
+
 ## Automatic updates
 
 Every six hours Actions checks stable Playwright and the Chromium recipe in

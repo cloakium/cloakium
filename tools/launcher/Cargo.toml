@@ -1,0 +1,22 @@
+[package]
+name = "cloakium-launcher"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+description = "Zero-dependency argv shaper for Cloakium's default headless desktop profile"
+license = "MIT"
+
+# Standalone crate: never inherit a workspace from a parent directory.
+[workspace]
+
+[lib]
+name = "cloakium_launcher"
+path = "src/lib.rs"
+
+[[bin]]
+name = "cloakium-chromium"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 2
+strip = true

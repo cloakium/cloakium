@@ -56,11 +56,14 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node tests/browser/run.mjs",
+    "test": "node tests/browser/run.mjs && npm run test:parity:unit",
     "test:node": "node tests/browser/run.mjs --no-bun",
     "test:bun": "bun tests/browser/run.mjs --no-build --no-bun",
-    "test:driver": "node tests/driver/smoke.mjs",
+    "test:driver": "node tests/driver/smoke.mjs && node tests/driver/headless-parity.mjs",
     "test:native": "node tests/native/smoke.mjs",
+    "test:parity": "node tests/parity/run.mjs",
+    "test:parity:fullscreen": "node tests/parity/fullscreen.mjs",
+    "test:parity:unit": "node --test tests/parity/*.test.mjs",
     "verify": "node tests/verification/verify.mjs"
   }
 }

@@ -7,7 +7,7 @@ import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "../..");
 const artifacts = resolve(root, "artifacts");
-const require = createRequire(import.meta.url);
+const loadPackage = createRequire(import.meta.url);
 mkdirSync(artifacts, { recursive: true });
 const evidence = { schemaVersion: 1, startedAt: new Date().toISOString(),
   platform: process.platform, arch: process.arch, node: process.versions.node,
@@ -51,7 +51,7 @@ try {
   assert.ok(binary, "CLOAKIUM_BINARY_PATH must identify the source-built Cloakium browser");
   assert.ok(evidence.system, "Native release verification supports Linux x86-64 and ARM64");
   const upstream = JSON.parse(readFileSync(resolve(root, "upstream.json"), "utf8"));
-  const driver = require("playwright-core/package.json");
+  const driver = loadPackage("playwright-core/package.json");
   assert.equal(driver.version, upstream.playwright.version, "Driver version differs from the release pin");
   assert.ok(driver.cloakium, "Verification requires the patched driver, not stock playwright-core");
   evidence.binary = binary;
@@ -69,6 +69,14 @@ try {
   check("bun-api", "npm", ["run", "test:bun"]);
   check("driver-regressions", "npm", ["run", "test:driver"]);
   check("native-regressions", "npm", ["run", "test:native"]);
+  check("parity-unit", "npm", ["run", "test:parity:unit"]);
+  check("headed-headless-parity", "npm", [
+    "run", "test:parity", "--", "--output", "artifacts/parity/release.json",
+  ], 7_260_000);
+  check("native-profile-parity", "npm", [
+    "run", "test:parity", "--", "--native-defaults", "--output", "artifacts/parity/release-native.json",
+  ], 7_260_000);
+  check("native-window-fullscreen", "npm", ["run", "test:parity:fullscreen"], 240_000);
   evidence.status = "passed";
 } catch (error) {
   evidence.status = "failed";

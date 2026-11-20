@@ -9,7 +9,7 @@
   };
 
   outputs =
-    { self, nixpkgs }:
+    { nixpkgs, ... }:
     let
       lib = nixpkgs.lib;
       systems = [
@@ -36,10 +36,12 @@
         let
           pkgs = import nixpkgs { inherit system; };
 
-          chromium = import ./nix/chromium.nix {
+          chromium-native = import ./nix/chromium.nix {
             pkgsChromium = pkgs;
             patches = chromiumPatches;
           };
+          chromium = pkgs.callPackage ./nix/launcher.nix { chromium = chromium-native; };
+          launcher = chromium.passthru.launcher;
           chromium-unwrapped = chromium.passthru.unwrapped;
           chromium-patch-check = import ./nix/patch-check.nix {
             inherit pkgs;
@@ -69,6 +71,9 @@
             gh
             prefetch-npm-deps
             actionlint
+            xvfb-run
+            openbox
+            xprop
           ];
           devShellInputs = {
             nativeBuildInputs = [ pkgs.pkg-config ];
@@ -79,12 +84,14 @@
           packages = {
             inherit
               chromium
+              chromium-native
               chromium-unwrapped
               chromium-patch-check
               maintain
               playwright
               playwright-patcher
               browser
+              launcher
               ;
             default = chromium;
           };
@@ -108,7 +115,7 @@
           };
 
           checks = {
-            inherit chromium-patch-check;
+            inherit chromium-patch-check launcher;
           };
 
           # No Chromium build is pulled in by the default shell. Opt into the
@@ -136,9 +143,11 @@
       devShells = forAllSystems (system: (perSystem system).devShells);
 
       overlays.default = final: _prev: {
-        cloakium-chromium = import ./nix/chromium.nix {
-          pkgsChromium = final;
-          patches = chromiumPatches;
+        cloakium-chromium = final.callPackage ./nix/launcher.nix {
+          chromium = import ./nix/chromium.nix {
+            pkgsChromium = final;
+            patches = chromiumPatches;
+          };
         };
         cloakium = {
           chromium = final.cloakium-chromium;
